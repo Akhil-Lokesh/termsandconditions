@@ -137,11 +137,11 @@ class OpenAIService:
 
         except OpenAIError as e:
             logger.error(f"OpenAI API error during batch embedding: {e}")
-            raise EmbeddingError(f"Failed to generate batch embeddings: {str(e)}") from e
+            raise EmbeddingError(
+                f"Failed to generate batch embeddings: {str(e)}"
+            ) from e
         except Exception as e:
-            logger.error(
-                f"Unexpected error during batch embedding: {e}", exc_info=True
-            )
+            logger.error(f"Unexpected error during batch embedding: {e}", exc_info=True)
             raise EmbeddingError(f"Unexpected error: {str(e)}") from e
 
     @retry(

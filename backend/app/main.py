@@ -17,7 +17,7 @@ from app.services.cache_service import CacheService
 # Configure logging
 logging.basicConfig(
     level=logging.DEBUG if settings.DEBUG else logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
@@ -121,7 +121,7 @@ async def health_check():
     return {
         "status": "healthy",
         "version": "1.0.0",
-        "environment": settings.ENVIRONMENT
+        "environment": settings.ENVIRONMENT,
     }
 
 
@@ -131,7 +131,7 @@ async def root():
     return {
         "message": "T&C Analysis API",
         "version": "1.0.0",
-        "docs_url": f"{settings.API_V1_PREFIX}/docs"
+        "docs_url": f"{settings.API_V1_PREFIX}/docs",
     }
 
 
@@ -179,9 +179,5 @@ logger.info("✓ API routers registered")
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(
-        "app.main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=settings.DEBUG
-    )
+
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=settings.DEBUG)

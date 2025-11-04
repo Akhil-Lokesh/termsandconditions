@@ -62,7 +62,7 @@ class DocumentProcessor:
             "text": text,
             "page_count": metadata.get("page_count", 0),
             "extraction_method": method,
-            "metadata": metadata
+            "metadata": metadata,
         }
 
     async def _extract_with_pdfplumber(self, pdf_path: str) -> str:
@@ -98,7 +98,7 @@ class DocumentProcessor:
             str: Extracted text
         """
         text_parts = []
-        with open(pdf_path, 'rb') as file:
+        with open(pdf_path, "rb") as file:
             pdf_reader = PyPDF2.PdfReader(file)
             for page in pdf_reader.pages:
                 page_text = page.extract_text()
@@ -121,7 +121,7 @@ class DocumentProcessor:
             dict: PDF metadata
         """
         try:
-            with open(pdf_path, 'rb') as file:
+            with open(pdf_path, "rb") as file:
                 pdf_reader = PyPDF2.PdfReader(file)
                 metadata = pdf_reader.metadata or {}
 
@@ -133,7 +133,7 @@ class DocumentProcessor:
                     "creator": metadata.get("/Creator", ""),
                     "producer": metadata.get("/Producer", ""),
                     "creation_date": metadata.get("/CreationDate", ""),
-                    "modification_date": metadata.get("/ModDate", "")
+                    "modification_date": metadata.get("/ModDate", ""),
                 }
         except Exception as e:
             logger.warning(f"Failed to extract metadata: {e}")
@@ -156,7 +156,7 @@ class DocumentProcessor:
             "terms of use",
             "user agreement",
             "service agreement",
-            "terms & conditions"
+            "terms & conditions",
         ]
 
         return any(indicator in text_lower for indicator in tc_indicators)

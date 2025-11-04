@@ -19,7 +19,9 @@ class Clause(Base):
     subsection = Column(String, nullable=True)
     clause_number = Column(String, nullable=True)
     text = Column(Text, nullable=False)
-    level = Column(Integer, nullable=True)  # Hierarchy level (0=section, 1=subsection, 2=clause)
+    level = Column(
+        Integer, nullable=True
+    )  # Hierarchy level (0=section, 1=subsection, 2=clause)
     clause_metadata = Column(JSON, nullable=True)  # Additional metadata
     pinecone_id = Column(String, nullable=True)  # Reference to Pinecone vector ID
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

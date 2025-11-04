@@ -18,7 +18,9 @@ logger = setup_logger(__name__)
 class RiskAssessor:
     """Assesses risk level of clauses using GPT-5-Nano (with GPT-4o-mini fallback) as a consumer protection tool."""
 
-    def __init__(self, openai_service: Optional[OpenAIService] = None, use_gpt5: bool = True):
+    def __init__(
+        self, openai_service: Optional[OpenAIService] = None, use_gpt5: bool = True
+    ):
         """
         Initialize risk assessor.
 
@@ -36,7 +38,9 @@ class RiskAssessor:
                 self.gpt5_service = GPT5Service()
                 logger.info("GPT-5 service initialized for risk assessment")
             except Exception as e:
-                logger.warning(f"GPT-5 service initialization failed, will use GPT-4o-mini: {e}")
+                logger.warning(
+                    f"GPT-5 service initialization failed, will use GPT-4o-mini: {e}"
+                )
                 self.use_gpt5 = False
 
     async def assess_risk(
@@ -46,7 +50,7 @@ class RiskAssessor:
         clause_number: str,
         prevalence: float,
         detected_indicators: List[Dict[str, Any]],
-        company_name: str = "Unknown"
+        company_name: str = "Unknown",
     ) -> Dict[str, Any]:
         """
         Assess risk level of a clause from a consumer protection perspective.
@@ -69,14 +73,22 @@ class RiskAssessor:
         # Build indicator summary
         indicator_summary = "None detected"
         if detected_indicators:
-            high_indicators = [ind for ind in detected_indicators if ind["severity"] == "high"]
-            medium_indicators = [ind for ind in detected_indicators if ind["severity"] == "medium"]
+            high_indicators = [
+                ind for ind in detected_indicators if ind["severity"] == "high"
+            ]
+            medium_indicators = [
+                ind for ind in detected_indicators if ind["severity"] == "medium"
+            ]
 
             parts = []
             if high_indicators:
-                parts.append(f"HIGH RISK: {', '.join([ind['description'] for ind in high_indicators])}")
+                parts.append(
+                    f"HIGH RISK: {', '.join([ind['description'] for ind in high_indicators])}"
+                )
             if medium_indicators:
-                parts.append(f"MEDIUM RISK: {', '.join([ind['description'] for ind in medium_indicators])}")
+                parts.append(
+                    f"MEDIUM RISK: {', '.join([ind['description'] for ind in medium_indicators])}"
+                )
 
             indicator_summary = "; ".join(parts) if parts else "Minor concerns detected"
 
@@ -88,7 +100,7 @@ class RiskAssessor:
             prevalence_msg = "(This is fairly common in T&Cs)"
         else:
             prevalence_msg = "(This is very standard)"
-        
+
         prompt = f"""You are a CONSUMER PROTECTION ADVOCATE analyzing Terms & Conditions for everyday people.
 
 Your job: Help consumers understand what they're really agreeing to and identify unfair clauses.
@@ -142,13 +154,15 @@ JSON Response:"""
             # Try GPT-5-Nano first (if available), fallback to GPT-4o-mini
             if self.use_gpt5 and self.gpt5_service:
                 try:
-                    logger.debug(f"Using GPT-5-Nano for risk assessment of clause {clause_number}")
+                    logger.debug(
+                        f"Using GPT-5-Nano for risk assessment of clause {clause_number}"
+                    )
 
                     # Use GPT-5 Responses API with correct parameters
                     result = await self.gpt5_service.create_json_response(
                         prompt=prompt,
                         model="gpt-5-nano",
-                        reasoning_effort="medium"  # Balanced quality/cost for anomaly detection
+                        reasoning_effort="medium",  # Balanced quality/cost for anomaly detection
                     )
 
                     logger.debug(
@@ -159,15 +173,17 @@ JSON Response:"""
                     return result
 
                 except Exception as e:
-                    logger.warning(f"GPT-5-Nano failed for clause {clause_number}, falling back to GPT-4o-mini: {e}")
+                    logger.warning(
+                        f"GPT-5-Nano failed for clause {clause_number}, falling back to GPT-4o-mini: {e}"
+                    )
                     # Continue to GPT-4o-mini fallback below
 
             # Fallback: Use GPT-4o-mini (reliable, working)
-            logger.debug(f"Using GPT-4o-mini for risk assessment of clause {clause_number}")
+            logger.debug(
+                f"Using GPT-4o-mini for risk assessment of clause {clause_number}"
+            )
             result = await self.openai.create_structured_completion(
-                prompt=prompt,
-                model="gpt-4o-mini",
-                temperature=0.3
+                prompt=prompt, model="gpt-4o-mini", temperature=0.3
             )
 
             logger.debug(
@@ -194,7 +210,7 @@ JSON Response:"""
                 "risk_category": "other",
                 "explanation": "Risk assessment based on detected indicators (GPT-4 parsing failed).",
                 "consumer_impact": f"Detected {len(detected_indicators)} potential issues.",
-                "recommendation": "Review this clause carefully."
+                "recommendation": "Review this clause carefully.",
             }
 
         except Exception as e:
@@ -205,5 +221,5 @@ JSON Response:"""
                 "risk_category": "other",
                 "explanation": "Unable to complete full risk assessment due to technical error.",
                 "consumer_impact": "This clause requires manual review.",
-                "recommendation": "Consult the full Terms & Conditions or seek legal advice."
+                "recommendation": "Consult the full Terms & Conditions or seek legal advice.",
             }

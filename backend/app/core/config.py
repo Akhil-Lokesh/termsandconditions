@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     BACKEND_CORS_ORIGINS: List[str] = [
         "http://localhost:5173",
         "http://localhost:3000",
-        "http://localhost:8000"
+        "http://localhost:8000",
     ]
 
     # File Upload Settings
@@ -70,10 +70,7 @@ class Settings(BaseSettings):
     RATE_LIMIT_PER_HOUR: int = 100
 
     model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=True,
-        extra="ignore"
+        env_file=".env", env_file_encoding="utf-8", case_sensitive=True, extra="ignore"
     )
 
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
@@ -103,7 +100,7 @@ class Settings(BaseSettings):
     def max_file_size_bytes(self) -> int:
         """Convert MB to bytes."""
         return self.MAX_FILE_SIZE_MB * 1024 * 1024
-    
+
     @property
     def MAX_UPLOAD_SIZE_MB(self) -> int:
         """Alias for MAX_FILE_SIZE_MB for backwards compatibility."""

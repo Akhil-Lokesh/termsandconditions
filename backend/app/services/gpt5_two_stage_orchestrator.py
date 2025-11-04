@@ -25,6 +25,7 @@ logger = setup_logger(__name__)
 @dataclass
 class AnalysisResult:
     """Result from two-stage analysis."""
+
     document_id: str
     overall_risk: str  # low, medium, high
     confidence: float  # 0.0-1.0
@@ -52,9 +53,11 @@ class AnalysisResult:
             "escalated": self.escalated,
             "timestamp": self.timestamp or datetime.utcnow().isoformat(),
             "metadata": {
-                "stage1_confidence": self.stage1_result.get("confidence") if self.stage1_result else None,
-                "stage2_validated": self.stage2_result is not None
-            }
+                "stage1_confidence": (
+                    self.stage1_result.get("confidence") if self.stage1_result else None
+                ),
+                "stage2_validated": self.stage2_result is not None,
+            },
         }
 
 
@@ -93,14 +96,16 @@ class GPT5TwoStageOrchestrator:
         self.total_cost = 0.0
         self.cache_enabled = enable_cache
 
-        logger.info(f"Initialized GPT5TwoStageOrchestrator (cache={'enabled' if enable_cache else 'disabled'})")
+        logger.info(
+            f"Initialized GPT5TwoStageOrchestrator (cache={'enabled' if enable_cache else 'disabled'})"
+        )
 
     async def analyze_document(
         self,
         document_text: str,
         document_id: str,
         company_name: str = "Unknown",
-        industry: str = "general"
+        industry: str = "general",
     ) -> AnalysisResult:
         """
         Analyze a T&C document using two-stage cascade.
@@ -143,7 +148,7 @@ class GPT5TwoStageOrchestrator:
                     stage1_result=cached_result.get("stage1_result"),
                     stage2_result=cached_result.get("stage2_result"),
                     escalated=cached_result.get("escalated", False),
-                    timestamp=cached_result.get("timestamp")
+                    timestamp=cached_result.get("timestamp"),
                 )
 
         # ===================================================================
@@ -155,7 +160,7 @@ class GPT5TwoStageOrchestrator:
             stage1_result = await self.stage1.classify_document(
                 document_text=document_text,
                 document_id=document_id,
-                company_name=company_name
+                company_name=company_name,
             )
 
             logger.info(
@@ -172,7 +177,9 @@ class GPT5TwoStageOrchestrator:
         # ===================================================================
         # ROUTING DECISION: Should we escalate to Stage 2?
         # ===================================================================
-        should_escalate = stage1_result.get("confidence", 0.0) < self.ESCALATION_THRESHOLD
+        should_escalate = (
+            stage1_result.get("confidence", 0.0) < self.ESCALATION_THRESHOLD
+        )
 
         logger.info(
             f"[{document_id}] Routing decision: "
@@ -196,7 +203,7 @@ class GPT5TwoStageOrchestrator:
                     document_id=document_id,
                     stage1_result=stage1_result,
                     company_name=company_name,
-                    industry=industry
+                    industry=industry,
                 )
 
                 logger.info(
@@ -238,7 +245,7 @@ class GPT5TwoStageOrchestrator:
             stage1_result=stage1_result,
             stage2_result=stage2_result,
             escalated=escalated,
-            timestamp=datetime.utcnow().isoformat()
+            timestamp=datetime.utcnow().isoformat(),
         )
 
         # Update metrics
@@ -264,7 +271,9 @@ class GPT5TwoStageOrchestrator:
         # ===================================================================
         # CACHE RESULT: Store for future use
         # ===================================================================
-        if self.cache and SmartCacheStrategy.should_cache(document_text, result.to_dict()):
+        if self.cache and SmartCacheStrategy.should_cache(
+            document_text, result.to_dict()
+        ):
             try:
                 await self.cache.cache_analysis_result(document_text, result.to_dict())
                 logger.info(f"[{document_id}] Result cached for future requests")
@@ -274,9 +283,7 @@ class GPT5TwoStageOrchestrator:
         return result
 
     async def analyze_batch(
-        self,
-        documents: List[Dict[str, str]],
-        batch_id: str = None
+        self, documents: List[Dict[str, str]], batch_id: str = None
     ) -> List[AnalysisResult]:
         """
         Analyze multiple documents in batch.
@@ -302,7 +309,7 @@ class GPT5TwoStageOrchestrator:
                     document_text=doc["text"],
                     document_id=doc["id"],
                     company_name=doc.get("company", "Unknown"),
-                    industry=doc.get("industry", "general")
+                    industry=doc.get("industry", "general"),
                 )
 
                 results.append(result)
@@ -313,7 +320,9 @@ class GPT5TwoStageOrchestrator:
                 )
 
             except Exception as e:
-                logger.error(f"[{batch_id}] Failed to analyze document {doc['id']}: {e}")
+                logger.error(
+                    f"[{batch_id}] Failed to analyze document {doc['id']}: {e}"
+                )
                 # Continue with next document
                 continue
 
@@ -321,7 +330,9 @@ class GPT5TwoStageOrchestrator:
         batch_time = time.time() - batch_start_time
         total_cost = sum(r.cost for r in results)
         avg_cost = total_cost / len(results) if results else 0
-        escalation_rate = sum(1 for r in results if r.escalated) / len(results) if results else 0
+        escalation_rate = (
+            sum(1 for r in results if r.escalated) / len(results) if results else 0
+        )
 
         logger.info(
             f"[{batch_id}] Batch complete: "
@@ -333,8 +344,13 @@ class GPT5TwoStageOrchestrator:
         )
 
         # Compare to targets
-        cost_vs_target = ((avg_cost - self.TARGET_BLENDED_COST) / self.TARGET_BLENDED_COST) * 100
-        escalation_vs_target = ((escalation_rate - self.TARGET_ESCALATION_RATE) / self.TARGET_ESCALATION_RATE) * 100
+        cost_vs_target = (
+            (avg_cost - self.TARGET_BLENDED_COST) / self.TARGET_BLENDED_COST
+        ) * 100
+        escalation_vs_target = (
+            (escalation_rate - self.TARGET_ESCALATION_RATE)
+            / self.TARGET_ESCALATION_RATE
+        ) * 100
 
         logger.info(
             f"[{batch_id}] Metrics vs targets: "
@@ -373,7 +389,7 @@ class GPT5TwoStageOrchestrator:
                 "total_cost": 0.0,
                 "average_cost_per_document": 0.0,
                 "escalation_rate": 0.0,
-                "total_savings": 0.0
+                "total_savings": 0.0,
             }
 
         avg_cost = self.total_cost / self.total_documents
@@ -387,9 +403,13 @@ class GPT5TwoStageOrchestrator:
             "total_cost": round(self.total_cost, 4),
             "average_cost_per_document": round(avg_cost, 6),
             "target_cost": self.TARGET_BLENDED_COST,
-            "cost_vs_target": round(((avg_cost - self.TARGET_BLENDED_COST) / self.TARGET_BLENDED_COST) * 100, 1),
+            "cost_vs_target": round(
+                ((avg_cost - self.TARGET_BLENDED_COST) / self.TARGET_BLENDED_COST)
+                * 100,
+                1,
+            ),
             "total_savings_vs_single_stage": round(total_savings, 4),
-            "percent_savings": round((1 - (avg_cost / 0.015)) * 100, 1)
+            "percent_savings": round((1 - (avg_cost / 0.015)) * 100, 1),
         }
 
     def reset_metrics(self):

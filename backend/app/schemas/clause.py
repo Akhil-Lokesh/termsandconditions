@@ -7,6 +7,7 @@ from datetime import datetime
 
 class ClauseBase(BaseModel):
     """Base clause schema."""
+
     section: Optional[str] = None
     subsection: Optional[str] = None
     clause_number: Optional[str] = None
@@ -15,6 +16,7 @@ class ClauseBase(BaseModel):
 
 class ClauseCreate(ClauseBase):
     """Schema for clause creation."""
+
     document_id: str
     level: Optional[int] = None
     metadata: Optional[Dict[str, Any]] = None
@@ -22,12 +24,11 @@ class ClauseCreate(ClauseBase):
 
 class ClauseResponse(ClauseBase):
     """Schema for clause response."""
+
     id: str
     document_id: str
     level: Optional[int] = None
     metadata: Optional[Dict[str, Any]] = None
     created_at: datetime
 
-    model_config = {
-        "from_attributes": True
-    }
+    model_config = {"from_attributes": True}

@@ -47,10 +47,10 @@ class RiskIndicators:
                 "terminate and access",
                 "terminate your access without notice",
                 "may suspend your account",
-                "may close your account"
+                "may close your account",
             ],
             "description": "Company can terminate service without warning or reason",
-            "severity": "high"
+            "severity": "high",
         },
         "content_loss": {
             "keywords": [
@@ -73,10 +73,10 @@ class RiskIndicators:
                 "not liable for lost or deleted files",
                 "data may be permanently deleted",
                 "no responsibility for content preservation",
-                "may delete without prior notice"
+                "may delete without prior notice",
             ],
             "description": "Risk of losing your data without compensation",
-            "severity": "high"
+            "severity": "high",
         },
         "auto_payment_updates": {
             "keywords": [
@@ -97,10 +97,10 @@ class RiskIndicators:
                 "update card details without consent",
                 "charge replacement card",
                 "automatic card update service",
-                "billing information automatically updated"
+                "billing information automatically updated",
             ],
             "description": "Automatic payment method updates without explicit consent",
-            "severity": "high"
+            "severity": "high",
         },
         "unlimited_liability": {
             "keywords": [
@@ -122,10 +122,10 @@ class RiskIndicators:
                 "liable for all costs",
                 "assume full responsibility",
                 "indemnify from any loss",
-                "bear unlimited responsibility"
+                "bear unlimited responsibility",
             ],
             "description": "You assume unlimited liability for any issues",
-            "severity": "high"
+            "severity": "high",
         },
         "rights_waiver": {
             "keywords": [
@@ -148,10 +148,10 @@ class RiskIndicators:
                 "waive all remedies",
                 "give up right to recovery",
                 "forfeit protections and rights",
-                "waive statutory rights"
+                "waive statutory rights",
             ],
             "description": "You waive important legal rights",
-            "severity": "high"
+            "severity": "high",
         },
         "price_increase_no_notice": {
             "keywords": [
@@ -180,10 +180,10 @@ class RiskIndicators:
                 "we may change the price",
                 "subject to price change",
                 "price may change without notice",
-                "rates may change"
+                "rates may change",
             ],
             "description": "Prices can increase without advance notice",
-            "severity": "high"
+            "severity": "high",
         },
         "forced_arbitration_class_waiver": {
             "keywords": [
@@ -207,11 +207,11 @@ class RiskIndicators:
                 "waive right to litigate",
                 "arbitration instead of court",
                 "no consolidated proceedings",
-                "waive representative actions"
+                "waive representative actions",
             ],
             "description": "You cannot join class action lawsuits",
-            "severity": "high"
-        }
+            "severity": "high",
+        },
     }
 
     # MEDIUM RISK: Concerning but common in some industries
@@ -241,10 +241,10 @@ class RiskIndicators:
                 "unless you cancel",
                 "continue to charge",
                 "recurring charges",
-                "subscription fee will be charged"
+                "subscription fee will be charged",
             ],
             "description": "Subscription automatically renews (hidden recurring cost)",
-            "severity": "medium"
+            "severity": "medium",
         },
         "broad_liability_disclaimer": {
             "keywords": [
@@ -264,10 +264,10 @@ class RiskIndicators:
                 "no guarantee of accuracy",
                 "disclaim liability to the fullest extent",
                 "not liable for indirect damages",
-                "use entirely at your risk"
+                "use entirely at your risk",
             ],
             "description": "Broad disclaimers limiting company liability",
-            "severity": "medium"
+            "severity": "medium",
         },
         "unilateral_changes": {
             "keywords": [
@@ -287,10 +287,10 @@ class RiskIndicators:
                 "change at our discretion",
                 "modify terms without warning",
                 "reserve right to change",
-                "update these terms at any time"
+                "update these terms at any time",
             ],
             "description": "Terms can change without notice",
-            "severity": "medium"
+            "severity": "medium",
         },
         "data_sharing": {
             "keywords": [
@@ -310,10 +310,10 @@ class RiskIndicators:
                 "share with advertisers",
                 "transfer to related companies",
                 "provide data to third party",
-                "share information with partners"
+                "share information with partners",
             ],
             "description": "Your data may be shared or sold",
-            "severity": "medium"
+            "severity": "medium",
         },
         "no_refund": {
             "keywords": [
@@ -334,10 +334,10 @@ class RiskIndicators:
                 "no refund upon cancellation",
                 "all payments final",
                 "not eligible for refund",
-                "no refunds under any circumstances"
+                "no refunds under any circumstances",
             ],
             "description": "Payments are non-refundable",
-            "severity": "medium"
+            "severity": "medium",
         },
         "broad_usage_rights": {
             "keywords": [
@@ -357,10 +357,10 @@ class RiskIndicators:
                 "use for commercial purposes",
                 "sublicense your content",
                 "worldwide perpetual license",
-                "non-exclusive perpetual license"
+                "non-exclusive perpetual license",
             ],
             "description": "Company gets broad rights to your content",
-            "severity": "medium"
+            "severity": "medium",
         },
         "monitoring_surveillance": {
             "keywords": [
@@ -380,10 +380,10 @@ class RiskIndicators:
                 "monitor your use",
                 "record all interactions",
                 "track browsing behavior",
-                "analyze user behavior"
+                "analyze user behavior",
             ],
             "description": "Extensive monitoring of your activities",
-            "severity": "medium"
+            "severity": "medium",
         },
         # NEW CATEGORIES (Fix #7) - Expanding from 9 to 20+ categories
         "intellectual_property_transfer": {
@@ -395,10 +395,10 @@ class RiskIndicators:
                 "you grant ownership",
                 "transfer copyright",
                 "assign all ip rights",
-                "intellectual property becomes ours"
+                "intellectual property becomes ours",
             ],
             "description": "Intellectual property ownership transfers to the company",
-            "severity": "medium"
+            "severity": "medium",
         },
         "content_moderation_control": {
             "keywords": [
@@ -408,10 +408,10 @@ class RiskIndicators:
                 "censor at will",
                 "remove without reason",
                 "content removal without appeal",
-                "moderation decisions are final"
+                "moderation decisions are final",
             ],
             "description": "Company has unilateral content moderation control",
-            "severity": "medium"
+            "severity": "medium",
         },
         "account_suspension": {
             "keywords": [
@@ -419,10 +419,10 @@ class RiskIndicators:
                 "temporary suspension at discretion",
                 "suspend access for any reason",
                 "account freeze without notice",
-                "suspend without explanation"
+                "suspend without explanation",
             ],
             "description": "Account can be suspended without notice",
-            "severity": "medium"
+            "severity": "medium",
         },
         "third_party_services": {
             "keywords": [
@@ -430,10 +430,10 @@ class RiskIndicators:
                 "third party services as is",
                 "no control over third parties",
                 "third party links without warranty",
-                "external services not our responsibility"
+                "external services not our responsibility",
             ],
             "description": "No responsibility for third-party services",
-            "severity": "medium"
+            "severity": "medium",
         },
         "minimum_age_vague": {
             "keywords": [
@@ -441,10 +441,10 @@ class RiskIndicators:
                 "minors prohibited",
                 "must be of age",
                 "age restriction applies",
-                "not intended for children"
+                "not intended for children",
             ],
             "description": "Vague age restrictions without verification",
-            "severity": "low"
+            "severity": "low",
         },
         "export_restrictions": {
             "keywords": [
@@ -452,10 +452,10 @@ class RiskIndicators:
                 "no data portability",
                 "cannot download your information",
                 "no data export feature",
-                "data locked in platform"
+                "data locked in platform",
             ],
             "description": "Limited or no ability to export your data",
-            "severity": "medium"
+            "severity": "medium",
         },
         "algorithmic_decisions": {
             "keywords": [
@@ -463,10 +463,10 @@ class RiskIndicators:
                 "algorithm determines",
                 "automated processing",
                 "machine learning decisions",
-                "ai-driven decisions"
+                "ai-driven decisions",
             ],
             "description": "Important decisions made by algorithms without human review",
-            "severity": "medium"
+            "severity": "medium",
         },
         "advertising_tracking": {
             "keywords": [
@@ -475,10 +475,10 @@ class RiskIndicators:
                 "advertising purposes",
                 "behavioral advertising",
                 "ad tracking",
-                "marketing partners access data"
+                "marketing partners access data",
             ],
             "description": "Data used for targeted advertising and tracking",
-            "severity": "medium"
+            "severity": "medium",
         },
         "warranty_void_tampering": {
             "keywords": [
@@ -486,10 +486,10 @@ class RiskIndicators:
                 "tampering voids warranty",
                 "warranty invalid if altered",
                 "reverse engineering prohibited",
-                "modification voids all rights"
+                "modification voids all rights",
             ],
             "description": "Warranty voided by user modifications or repairs",
-            "severity": "medium"
+            "severity": "medium",
         },
         "beta_experimental": {
             "keywords": [
@@ -498,10 +498,10 @@ class RiskIndicators:
                 "provided as beta",
                 "testing phase",
                 "may be unstable",
-                "no guarantee of availability"
+                "no guarantee of availability",
             ],
             "description": "Service is experimental/beta with no stability guarantees",
-            "severity": "low"
+            "severity": "low",
         },
         "language_translation": {
             "keywords": [
@@ -509,21 +509,21 @@ class RiskIndicators:
                 "translation for convenience only",
                 "english version prevails",
                 "translations not binding",
-                "only english version enforceable"
+                "only english version enforceable",
             ],
             "description": "Only English version is legally binding",
-            "severity": "low"
+            "severity": "low",
         },
         "forum_liability": {
             "keywords": [
                 "liable for forum posts",
                 "responsible for community content",
                 "accountable for discussions",
-                "liable for user interactions"
+                "liable for user interactions",
             ],
             "description": "You may be liable for community/forum interactions",
-            "severity": "medium"
-        }
+            "severity": "medium",
+        },
     }
 
     # CONTEXT-DEPENDENT: May be risky depending on service type
@@ -532,32 +532,28 @@ class RiskIndicators:
             "keywords": [
                 "responsible for user content",
                 "liable for your posts",
-                "accountable for uploads"
+                "accountable for uploads",
             ],
             "context": "social_media",
             "description": "You're responsible for all content you post",
-            "severity": "context"
+            "severity": "context",
         },
         "payment_processing_fees": {
-            "keywords": [
-                "payment processing fee",
-                "transaction fee",
-                "service charge"
-            ],
+            "keywords": ["payment processing fee", "transaction fee", "service charge"],
             "context": "payment",
             "description": "Additional fees for payment processing",
-            "severity": "context"
+            "severity": "context",
         },
         "geographic_restrictions": {
             "keywords": [
                 "not available in all regions",
                 "restricted in certain countries",
-                "geographic limitations"
+                "geographic limitations",
             ],
             "context": "global_service",
             "description": "Service may not work in your location",
-            "severity": "context"
-        }
+            "severity": "context",
+        },
     }
 
     def __init__(self):
@@ -566,7 +562,9 @@ class RiskIndicators:
         self.medium_risk = self.MEDIUM_RISK_PATTERNS
         self.context_dependent = self.CONTEXT_DEPENDENT_PATTERNS
 
-    def detect_indicators(self, clause_text: str, service_type: str = "general") -> List[Dict]:
+    def detect_indicators(
+        self, clause_text: str, service_type: str = "general"
+    ) -> List[Dict]:
         """
         Detect all risk indicators in a clause.
 
@@ -583,36 +581,44 @@ class RiskIndicators:
         # Check HIGH RISK patterns
         for indicator_name, pattern_data in self.high_risk.items():
             if self._matches_pattern(text_lower, pattern_data["keywords"]):
-                detected.append({
-                    "indicator": indicator_name,
-                    "severity": "high",
-                    "description": pattern_data["description"],
-                    "category": "high_risk"
-                })
+                detected.append(
+                    {
+                        "indicator": indicator_name,
+                        "severity": "high",
+                        "description": pattern_data["description"],
+                        "category": "high_risk",
+                    }
+                )
 
         # Check MEDIUM RISK patterns
         for indicator_name, pattern_data in self.medium_risk.items():
             if self._matches_pattern(text_lower, pattern_data["keywords"]):
-                detected.append({
-                    "indicator": indicator_name,
-                    "severity": "medium",
-                    "description": pattern_data["description"],
-                    "category": "medium_risk"
-                })
+                detected.append(
+                    {
+                        "indicator": indicator_name,
+                        "severity": "medium",
+                        "description": pattern_data["description"],
+                        "category": "medium_risk",
+                    }
+                )
 
         # Check CONTEXT-DEPENDENT patterns
         for indicator_name, pattern_data in self.context_dependent.items():
             if self._matches_pattern(text_lower, pattern_data["keywords"]):
                 # Check if context matches
-                is_relevant = service_type == pattern_data["context"] or service_type == "general"
-                detected.append({
-                    "indicator": indicator_name,
-                    "severity": pattern_data["severity"],
-                    "description": pattern_data["description"],
-                    "category": "context_dependent",
-                    "relevant_for": pattern_data["context"],
-                    "applies_to_service": is_relevant
-                })
+                is_relevant = (
+                    service_type == pattern_data["context"] or service_type == "general"
+                )
+                detected.append(
+                    {
+                        "indicator": indicator_name,
+                        "severity": pattern_data["severity"],
+                        "description": pattern_data["description"],
+                        "category": "context_dependent",
+                        "relevant_for": pattern_data["context"],
+                        "applies_to_service": is_relevant,
+                    }
+                )
 
         return detected
 
@@ -624,8 +630,8 @@ class RiskIndicators:
         """
         for keyword in keywords:
             # Remove punctuation and extra spaces for matching
-            keyword_clean = re.sub(r'[^\w\s]', ' ', keyword.lower())
-            text_clean = re.sub(r'[^\w\s]', ' ', text)
+            keyword_clean = re.sub(r"[^\w\s]", " ", keyword.lower())
+            text_clean = re.sub(r"[^\w\s]", " ", text)
 
             # Check for phrase match (all words present in order)
             keyword_words = keyword_clean.split()
@@ -642,7 +648,9 @@ class RiskIndicators:
                 if all(word in text_clean for word in keyword_words):
                     # Check if words are reasonably close together (within 20 words)
                     text_words = text_clean.split()
-                    positions = [i for i, w in enumerate(text_words) if w in keyword_words]
+                    positions = [
+                        i for i, w in enumerate(text_words) if w in keyword_words
+                    ]
                     if positions and max(positions) - min(positions) < 20:
                         return True
 
@@ -655,12 +663,7 @@ class RiskIndicators:
         Returns:
             Dictionary with counts by severity
         """
-        distribution = {
-            "high": 0,
-            "medium": 0,
-            "context": 0,
-            "total": len(indicators)
-        }
+        distribution = {"high": 0, "medium": 0, "context": 0, "total": len(indicators)}
 
         for indicator in indicators:
             severity = indicator["severity"]

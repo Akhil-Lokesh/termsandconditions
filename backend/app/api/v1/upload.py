@@ -9,7 +9,16 @@ import tempfile
 import os
 from pathlib import Path
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, BackgroundTasks, Request
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    UploadFile,
+    File,
+    status,
+    BackgroundTasks,
+    Request,
+)
 from sqlalchemy.orm import Session
 
 from app.api.deps import (
@@ -79,7 +88,7 @@ async def upload_document(
     logger.info(f"Document upload started by user: {current_user.email}")
 
     # Validate file type (PDF only)
-    if not file.filename.endswith('.pdf'):
+    if not file.filename.endswith(".pdf"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only PDF files are supported. Please upload a .pdf file.",
@@ -122,24 +131,32 @@ async def upload_document(
         page_count = extracted["page_count"]
         extraction_method = extracted["extraction_method"]
 
-        logger.info(f"Text extracted: {len(text)} chars, {page_count} pages, method={extraction_method}")
+        logger.info(
+            f"Text extracted: {len(text)} chars, {page_count} pages, method={extraction_method}"
+        )
 
         if len(text) < 100:
-            raise DocumentProcessingError("Document text too short. This may be a scanned PDF or corrupted file.")
+            raise DocumentProcessingError(
+                "Document text too short. This may be a scanned PDF or corrupted file."
+            )
 
         # ============================================================
         # STEP 2: Parse structure (sections, clauses)
         # ============================================================
         extractor = StructureExtractor()
         structure = await extractor.extract_structure(text)
-        
+
         sections = structure["sections"]
         num_clauses = structure["num_clauses"]
 
-        logger.info(f"Structure extracted: {num_clauses} clauses found in {len(sections)} sections")
+        logger.info(
+            f"Structure extracted: {num_clauses} clauses found in {len(sections)} sections"
+        )
 
         if num_clauses == 0:
-            raise DocumentProcessingError("No structured clauses found in document. Unable to analyze.")
+            raise DocumentProcessingError(
+                "No structured clauses found in document. Unable to analyze."
+            )
 
         # ============================================================
         # STEP 3: Create semantic chunks
@@ -215,16 +232,19 @@ async def upload_document(
                 document_id=doc_id,
                 sections=sections,
                 company_name=company_name,
-                service_type="general"  # TODO: Auto-detect service type from metadata
+                service_type="general",  # TODO: Auto-detect service type from metadata
             )
 
-            logger.info(f"Anomaly detection completed: {len(anomalies)} anomalies found")
+            logger.info(
+                f"Anomaly detection completed: {len(anomalies)} anomalies found"
+            )
 
             # Generate risk assessment report
             risk_report = await detector.generate_report(doc_id, anomalies)
 
             # Save anomalies to database
             from app.models.anomaly import Anomaly
+
             for anomaly_data in anomalies:
                 anomaly = Anomaly(
                     id=str(uuid.uuid4()),
@@ -330,10 +350,14 @@ async def get_document(
     """
     Get document metadata and analysis results by ID.
     """
-    document = db.query(Document).filter(
-        Document.id == document_id,
-        Document.user_id == current_user.id,
-    ).first()
+    document = (
+        db.query(Document)
+        .filter(
+            Document.id == document_id,
+            Document.user_id == current_user.id,
+        )
+        .first()
+    )
 
     if not document:
         raise HTTPException(
@@ -369,14 +393,17 @@ async def list_documents(
     List all documents for the current user with pagination.
     """
     # Get total count
-    total = db.query(Document).filter(
-        Document.user_id == current_user.id
-    ).count()
+    total = db.query(Document).filter(Document.user_id == current_user.id).count()
 
     # Get documents with pagination
-    documents = db.query(Document).filter(
-        Document.user_id == current_user.id
-    ).order_by(Document.created_at.desc()).offset(skip).limit(limit).all()
+    documents = (
+        db.query(Document)
+        .filter(Document.user_id == current_user.id)
+        .order_by(Document.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 
     return DocumentListResponse(
         documents=[
@@ -415,10 +442,14 @@ async def delete_document(
     Delete document and cleanup all associated resources.
     """
     # Find document
-    document = db.query(Document).filter(
-        Document.id == document_id,
-        Document.user_id == current_user.id,
-    ).first()
+    document = (
+        db.query(Document)
+        .filter(
+            Document.id == document_id,
+            Document.user_id == current_user.id,
+        )
+        .first()
+    )
 
     if not document:
         raise HTTPException(

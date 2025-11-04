@@ -70,13 +70,13 @@ router = APIRouter()
                                 "section": "Payment Terms",
                                 "clause_number": "5.2",
                                 "text": "All payments are final...",
-                                "relevance_score": 0.92
+                                "relevance_score": 0.92,
                             }
                         ],
-                        "confidence": 0.92
+                        "confidence": 0.92,
                     }
                 }
-            }
+            },
         },
         404: {"description": "Document not found or no relevant clauses"},
         422: {"description": "Invalid question format"},
@@ -107,10 +107,14 @@ async def query_document(
         )
 
     # Verify document exists and user has access
-    document = db.query(Document).filter(
-        Document.id == query_data.document_id,
-        Document.user_id == current_user.id,
-    ).first()
+    document = (
+        db.query(Document)
+        .filter(
+            Document.id == query_data.document_id,
+            Document.user_id == current_user.id,
+        )
+        .first()
+    )
 
     if not document:
         raise HTTPException(
@@ -183,12 +187,16 @@ async def query_document(
             # Handle NaN scores
             if score is None or score != score:  # NaN != NaN
                 score = 0.5
-            
+
             citations.append(
                 Citation(
                     clause_id=metadata.get("clause_id", f"clause_{idx + 1}"),
                     section=metadata.get("section", "Unknown Section"),
-                    text=metadata["text"][:300] + "..." if len(metadata["text"]) > 300 else metadata["text"],
+                    text=(
+                        metadata["text"][:300] + "..."
+                        if len(metadata["text"]) > 300
+                        else metadata["text"]
+                    ),
                     relevance_score=float(score),
                 )
             )
@@ -227,11 +235,17 @@ async def query_document(
                     confidence = float(score)
                 else:
                     # Fallback: use average of all scores
-                    valid_scores = [r["score"] for r in results if r["score"] is not None and r["score"] == r["score"]]
-                    confidence = sum(valid_scores) / len(valid_scores) if valid_scores else 0.5
+                    valid_scores = [
+                        r["score"]
+                        for r in results
+                        if r["score"] is not None and r["score"] == r["score"]
+                    ]
+                    confidence = (
+                        sum(valid_scores) / len(valid_scores) if valid_scores else 0.5
+                    )
             except (KeyError, TypeError, ValueError):
                 confidence = 0.5  # Default moderate confidence
-        
+
         response = QueryResponse(
             question=query_data.question,
             answer=answer,
@@ -277,10 +291,14 @@ async def get_query_history(
     **Note**: Not yet implemented. Returns empty list.
     """
     # Verify document access
-    document = db.query(Document).filter(
-        Document.id == document_id,
-        Document.user_id == current_user.id,
-    ).first()
+    document = (
+        db.query(Document)
+        .filter(
+            Document.id == document_id,
+            Document.user_id == current_user.id,
+        )
+        .first()
+    )
 
     if not document:
         raise HTTPException(
@@ -292,5 +310,5 @@ async def get_query_history(
     return {
         "document_id": document_id,
         "queries": [],
-        "message": "Query history tracking coming soon"
+        "message": "Query history tracking coming soon",
     }

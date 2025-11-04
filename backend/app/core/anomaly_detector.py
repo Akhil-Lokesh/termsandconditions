@@ -28,7 +28,7 @@ class AnomalyDetector:
         self,
         openai_service: Optional[OpenAIService] = None,
         pinecone_service: Optional[PineconeService] = None,
-        db: Optional[Session] = None
+        db: Optional[Session] = None,
     ):
         """
         Initialize anomaly detector.
@@ -47,13 +47,13 @@ class AnomalyDetector:
         self.semantic_detector = SemanticRiskDetector(self.openai)  # Fix #5
         self.compound_detector = CompoundRiskDetector()  # Fix #6
         self._semantic_initialized = False
-    
+
     async def detect_anomalies(
         self,
         document_id: str,
         sections: List[Dict[str, Any]],
         company_name: str = "Unknown",
-        service_type: str = "general"
+        service_type: str = "general",
     ) -> List[Dict[str, Any]]:
         """
         Detect all anomalies in a document.
@@ -82,24 +82,31 @@ class AnomalyDetector:
             clauses = section.get("clauses", [])
             total_clauses += len(clauses)
 
-            logger.info(f"Analyzing section '{section_name}' with {len(clauses)} clauses")
+            logger.info(
+                f"Analyzing section '{section_name}' with {len(clauses)} clauses"
+            )
 
             for clause_idx, clause in enumerate(clauses):
                 clause_text = clause.get("text", "")
-                clause_number = clause.get("clause_number", f"{section_name}.{clause_idx}")
+                clause_number = clause.get(
+                    "clause_number", f"{section_name}.{clause_idx}"
+                )
 
                 if not clause_text or len(clause_text.strip()) < 5:
                     continue  # Skip only empty or extremely short clauses (< 5 chars)
 
-                logger.debug(f"Analyzing clause {clause_number}: {clause_text[:100]}...")
+                logger.debug(
+                    f"Analyzing clause {clause_number}: {clause_text[:100]}..."
+                )
 
                 # STEP 1: Detect universal risk indicators (keyword-based)
                 detected_indicators = self.risk_indicators.detect_indicators(
-                    clause_text=clause_text,
-                    service_type=service_type
+                    clause_text=clause_text, service_type=service_type
                 )
 
-                logger.debug(f"Clause {clause_number}: Found {len(detected_indicators)} keyword indicators")
+                logger.debug(
+                    f"Clause {clause_number}: Found {len(detected_indicators)} keyword indicators"
+                )
 
                 # STEP 1.5: Augment with semantic detection (Fix #5)
                 # Initialize semantic detector on first use (lazy initialization)
@@ -113,34 +120,45 @@ class AnomalyDetector:
                 # Add semantic detection if initialized
                 if self._semantic_initialized:
                     try:
-                        detected_indicators = await self.semantic_detector.augment_indicators(
-                            clause_text=clause_text,
-                            keyword_indicators=detected_indicators
+                        detected_indicators = (
+                            await self.semantic_detector.augment_indicators(
+                                clause_text=clause_text,
+                                keyword_indicators=detected_indicators,
+                            )
                         )
                         logger.debug(
                             f"Clause {clause_number}: Total indicators after semantic detection: "
                             f"{len(detected_indicators)}"
                         )
                     except Exception as e:
-                        logger.warning(f"Semantic detection failed for clause {clause_number}: {e}")
+                        logger.warning(
+                            f"Semantic detection failed for clause {clause_number}: {e}"
+                        )
                         # Continue with keyword indicators only
 
                 # STEP 2: Calculate prevalence in baseline corpus
                 try:
                     prevalence = await self.prevalence_calc.calculate_prevalence(
-                        clause_text=clause_text,
-                        clause_type=section_name
+                        clause_text=clause_text, clause_type=section_name
                     )
-                    logger.debug(f"Clause {clause_number}: Prevalence = {prevalence:.2%}")
+                    logger.debug(
+                        f"Clause {clause_number}: Prevalence = {prevalence:.2%}"
+                    )
                 except Exception as e:
-                    logger.warning(f"Prevalence calculation failed for clause {clause_number}: {e}")
+                    logger.warning(
+                        f"Prevalence calculation failed for clause {clause_number}: {e}"
+                    )
                     # Default to 10% (Fix #2 - unusual/rare when unknown)
                     prevalence = 0.1  # Unknown but probably unusual
 
                 # STEP 3: Determine if clause is suspicious
                 is_unusual = prevalence < 0.30  # Rare clause
-                has_high_risk = any(ind["severity"] == "high" for ind in detected_indicators)
-                has_medium_risk = any(ind["severity"] == "medium" for ind in detected_indicators)
+                has_high_risk = any(
+                    ind["severity"] == "high" for ind in detected_indicators
+                )
+                has_medium_risk = any(
+                    ind["severity"] == "medium" for ind in detected_indicators
+                )
 
                 is_suspicious = is_unusual or has_high_risk or has_medium_risk
 
@@ -170,7 +188,7 @@ class AnomalyDetector:
                             clause_number=clause_number,
                             prevalence=prevalence,
                             detected_indicators=detected_indicators,
-                            company_name=company_name
+                            company_name=company_name,
                         )
 
                         logger.info(
@@ -184,12 +202,22 @@ class AnomalyDetector:
                         risk_category = risk_assessment.get("risk_category", "other")
 
                     except Exception as e:
-                        logger.warning(f"GPT-4 assessment failed for clause {clause_number}: {e}")
+                        logger.warning(
+                            f"GPT-4 assessment failed for clause {clause_number}: {e}"
+                        )
                         # Fallback: Generate basic explanation from indicators
-                        explanation = self._generate_fallback_explanation(detected_indicators, prevalence)
+                        explanation = self._generate_fallback_explanation(
+                            detected_indicators, prevalence
+                        )
                         consumer_impact = "This clause may negatively impact consumers."
-                        recommendation = "Review this clause carefully before accepting."
-                        risk_category = detected_indicators[0]["indicator"] if detected_indicators else "other"
+                        recommendation = (
+                            "Review this clause carefully before accepting."
+                        )
+                        risk_category = (
+                            detected_indicators[0]["indicator"]
+                            if detected_indicators
+                            else "other"
+                        )
 
                     # ALWAYS flag suspicious clauses (Fix #4 - No GPT-4 gate)
                     anomaly = {
@@ -208,17 +236,25 @@ class AnomalyDetector:
                             {
                                 "name": ind["indicator"],
                                 "description": ind["description"],
-                                "severity": ind["severity"]
+                                "severity": ind["severity"],
                             }
                             for ind in detected_indicators
                         ],
-                        "comparison": f"Found in only {prevalence*100:.0f}% of similar services" if prevalence < 0.30 else f"Found in {prevalence*100:.0f}% of similar services"
+                        "comparison": (
+                            f"Found in only {prevalence*100:.0f}% of similar services"
+                            if prevalence < 0.30
+                            else f"Found in {prevalence*100:.0f}% of similar services"
+                        ),
                     }
 
                     all_anomalies.append(anomaly)
-                    logger.info(f"✓ Anomaly detected: {clause_number} ({severity} risk - {len(detected_indicators)} indicators)")
+                    logger.info(
+                        f"✓ Anomaly detected: {clause_number} ({severity} risk - {len(detected_indicators)} indicators)"
+                    )
 
-        logger.info(f"Anomaly detection complete: {len(all_anomalies)} anomalies found out of {total_clauses} clauses")
+        logger.info(
+            f"Anomaly detection complete: {len(all_anomalies)} anomalies found out of {total_clauses} clauses"
+        )
 
         # STEP 6: Detect compound risks (Fix #6)
         compound_risks = self.compound_detector.detect_compound_risks(all_anomalies)
@@ -237,7 +273,9 @@ class AnomalyDetector:
                     }
 
                     required_indicators = set(compound_risk["required_indicators"])
-                    optional_indicators = set(compound_risk.get("matched_optional_indicators", []))
+                    optional_indicators = set(
+                        compound_risk.get("matched_optional_indicators", [])
+                    )
                     all_relevant = required_indicators.union(optional_indicators)
 
                     if anomaly_indicators.intersection(all_relevant):
@@ -245,12 +283,14 @@ class AnomalyDetector:
                         if "compound_risks" not in anomaly:
                             anomaly["compound_risks"] = []
 
-                        anomaly["compound_risks"].append({
-                            "pattern": pattern_name,
-                            "severity": compound_risk["severity"],
-                            "description": compound_risk["description"],
-                            "confidence": compound_risk["confidence"]
-                        })
+                        anomaly["compound_risks"].append(
+                            {
+                                "pattern": pattern_name,
+                                "severity": compound_risk["severity"],
+                                "description": compound_risk["description"],
+                                "confidence": compound_risk["confidence"],
+                            }
+                        )
 
         # Store compound risks for document-level reporting
         # (Can be accessed separately via document.compound_risks)
@@ -260,7 +300,9 @@ class AnomalyDetector:
 
         return all_anomalies
 
-    def _generate_fallback_explanation(self, detected_indicators: List[Dict], prevalence: float) -> str:
+    def _generate_fallback_explanation(
+        self, detected_indicators: List[Dict], prevalence: float
+    ) -> str:
         """
         Generate basic explanation when GPT-4 fails (Fix #4 - Fallback).
 
@@ -275,10 +317,14 @@ class AnomalyDetector:
             return f"This clause is unusual (found in only {prevalence*100:.0f}% of similar services)."
 
         # Build explanation from indicators
-        indicator_names = [ind["description"] for ind in detected_indicators[:3]]  # Top 3
+        indicator_names = [
+            ind["description"] for ind in detected_indicators[:3]
+        ]  # Top 3
 
         if len(indicator_names) == 1:
-            explanation = f"This clause contains a concerning pattern: {indicator_names[0]}."
+            explanation = (
+                f"This clause contains a concerning pattern: {indicator_names[0]}."
+            )
         elif len(indicator_names) == 2:
             explanation = f"This clause contains concerning patterns: {indicator_names[0]} and {indicator_names[1]}."
         else:
@@ -289,7 +335,9 @@ class AnomalyDetector:
 
         return explanation
 
-    def calculate_document_risk_score(self, anomalies: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def calculate_document_risk_score(
+        self, anomalies: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
         """
         Calculate overall risk score for the document.
 
@@ -313,8 +361,8 @@ class AnomalyDetector:
                     "anomaly_count": 0,
                     "high_severity": 0,
                     "medium_severity": 0,
-                    "low_severity": 0
-                }
+                    "low_severity": 0,
+                },
             }
 
         # Count by severity
@@ -329,10 +377,14 @@ class AnomalyDetector:
 
         # SCORING FORMULA (1-10 scale):
         # Base score from anomaly count
-        count_score = min(total_count / 2.0, 4.0)  # Max 4 points (1-8 anomalies = 0.5-4 pts)
+        count_score = min(
+            total_count / 2.0, 4.0
+        )  # Max 4 points (1-8 anomalies = 0.5-4 pts)
 
         # Severity weighting
-        severity_score = (high_count * 0.75) + (medium_count * 0.35) + (low_count * 0.15)
+        severity_score = (
+            (high_count * 0.75) + (medium_count * 0.35) + (low_count * 0.15)
+        )
         severity_score = min(severity_score, 4.0)  # Max 4 points
 
         # Category diversity (more categories = more systemic issues)
@@ -357,7 +409,9 @@ class AnomalyDetector:
             explanation = f"This document contains {total_count} minor issues. Most terms appear standard, but review the flagged clauses for your specific situation."
 
         logger.info(f"Document risk score: {risk_score:.1f}/10 ({risk_level})")
-        logger.info(f"Breakdown: {total_count} anomalies ({high_count} high, {medium_count} medium, {low_count} low)")
+        logger.info(
+            f"Breakdown: {total_count} anomalies ({high_count} high, {medium_count} medium, {low_count} low)"
+        )
 
         return {
             "risk_score": round(risk_score, 1),
@@ -370,19 +424,17 @@ class AnomalyDetector:
                 "medium_severity": medium_count,
                 "low_severity": low_count,
                 "category_diversity": category_diversity,
-                "categories": list(categories)
+                "categories": list(categories),
             },
             "scoring_details": {
                 "count_contribution": round(count_score, 2),
                 "severity_contribution": round(severity_score, 2),
-                "diversity_contribution": round(diversity_score, 2)
-            }
+                "diversity_contribution": round(diversity_score, 2),
+            },
         }
 
     async def generate_report(
-        self,
-        document_id: str,
-        anomalies: List[Dict[str, Any]]
+        self, document_id: str, anomalies: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """
         Generate complete anomaly report for document.
@@ -423,9 +475,13 @@ class AnomalyDetector:
             "medium_risk_anomalies": medium_risk,
             "low_risk_anomalies": low_risk,
             "by_category": by_category,
-            "top_concerns": high_risk[:3] if high_risk else medium_risk[:3],  # Top 3 most critical
+            "top_concerns": (
+                high_risk[:3] if high_risk else medium_risk[:3]
+            ),  # Top 3 most critical
         }
 
-        logger.info(f"Report generated: {len(anomalies)} anomalies, Risk Score: {risk_assessment['risk_score']}/10")
+        logger.info(
+            f"Report generated: {len(anomalies)} anomalies, Risk Score: {risk_assessment['risk_score']}/10"
+        )
 
         return report

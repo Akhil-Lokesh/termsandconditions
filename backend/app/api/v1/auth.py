@@ -103,9 +103,9 @@ async def login(
     logger.info(f"Login attempt for email: {form_data.username}")
 
     # Find user by email
-    user = db.query(User).filter(
-        User.email == form_data.username.lower().strip()
-    ).first()
+    user = (
+        db.query(User).filter(User.email == form_data.username.lower().strip()).first()
+    )
 
     # Verify user exists and password is correct
     if not user or not verify_password(form_data.password, user.hashed_password):

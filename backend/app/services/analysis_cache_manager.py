@@ -67,10 +67,7 @@ class AnalysisCacheManager:
         # Generate hash
         return hashlib.sha256(normalized.encode()).hexdigest()
 
-    async def get_cached_analysis(
-        self,
-        document_text: str
-    ) -> Optional[Dict[str, Any]]:
+    async def get_cached_analysis(self, document_text: str) -> Optional[Dict[str, Any]]:
         """
         Get cached analysis result if available.
 
@@ -93,7 +90,11 @@ class AnalysisCacheManager:
                 logger.info(f"Cache HIT for document hash {doc_hash[:16]}...")
 
                 # Parse JSON
-                result = json.loads(cached_data) if isinstance(cached_data, str) else cached_data
+                result = (
+                    json.loads(cached_data)
+                    if isinstance(cached_data, str)
+                    else cached_data
+                )
 
                 # Add cache metadata
                 result["from_cache"] = True
@@ -112,9 +113,7 @@ class AnalysisCacheManager:
             return None
 
     async def cache_analysis_result(
-        self,
-        document_text: str,
-        analysis_result: Dict[str, Any]
+        self, document_text: str, analysis_result: Dict[str, Any]
     ):
         """
         Cache analysis result for future use.
@@ -140,7 +139,7 @@ class AnalysisCacheManager:
             await self.cache.set(
                 cache_key,
                 cached_data,
-                ttl=int(self.ANALYSIS_RESULT_TTL.total_seconds())
+                ttl=int(self.ANALYSIS_RESULT_TTL.total_seconds()),
             )
 
             logger.info(
@@ -151,10 +150,7 @@ class AnalysisCacheManager:
         except Exception as e:
             logger.error(f"Cache storage error: {e}")
 
-    async def invalidate_document_cache(
-        self,
-        document_text: str
-    ):
+    async def invalidate_document_cache(self, document_text: str):
         """
         Invalidate cached analysis for a document.
 
@@ -190,7 +186,7 @@ class AnalysisCacheManager:
             "total_requests": total_requests,
             "hit_rate_percent": round(hit_rate, 1),
             "target_hit_rate": "15-25%",
-            "estimated_cost_savings": self._estimate_cost_savings()
+            "estimated_cost_savings": self._estimate_cost_savings(),
         }
 
     def _estimate_cost_savings(self) -> float:
@@ -225,10 +221,7 @@ class SmartCacheStrategy:
     HIGH_CONFIDENCE_THRESHOLD = 0.85  # Longer TTL for high confidence
 
     @staticmethod
-    def should_cache(
-        document_text: str,
-        analysis_result: Dict[str, Any]
-    ) -> bool:
+    def should_cache(document_text: str, analysis_result: Dict[str, Any]) -> bool:
         """
         Decide if result should be cached.
 
@@ -250,7 +243,10 @@ class SmartCacheStrategy:
             return True
 
         # Cache high-confidence results
-        if analysis_result.get("confidence", 0) > SmartCacheStrategy.HIGH_CONFIDENCE_THRESHOLD:
+        if (
+            analysis_result.get("confidence", 0)
+            > SmartCacheStrategy.HIGH_CONFIDENCE_THRESHOLD
+        ):
             logger.debug("Caching: high confidence result")
             return True
 
@@ -258,9 +254,7 @@ class SmartCacheStrategy:
         return True
 
     @staticmethod
-    def get_ttl(
-        analysis_result: Dict[str, Any]
-    ) -> int:
+    def get_ttl(analysis_result: Dict[str, Any]) -> int:
         """
         Get appropriate TTL based on result characteristics.
 
@@ -273,7 +267,10 @@ class SmartCacheStrategy:
         base_ttl = 7 * 24 * 60 * 60  # 7 days
 
         # Longer TTL for high-confidence results
-        if analysis_result.get("confidence", 0) > SmartCacheStrategy.HIGH_CONFIDENCE_THRESHOLD:
+        if (
+            analysis_result.get("confidence", 0)
+            > SmartCacheStrategy.HIGH_CONFIDENCE_THRESHOLD
+        ):
             return base_ttl * 2  # 14 days
 
         # Longer TTL for expensive analyses

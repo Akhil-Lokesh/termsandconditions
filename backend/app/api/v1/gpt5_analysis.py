@@ -15,7 +15,10 @@ from app.models.user import User
 from app.models.document import Document
 from app.models.anomaly import Anomaly
 from app.models.analysis_log import AnalysisLog
-from app.services.gpt5_two_stage_orchestrator import GPT5TwoStageOrchestrator, AnalysisResult
+from app.services.gpt5_two_stage_orchestrator import (
+    GPT5TwoStageOrchestrator,
+    AnalysisResult,
+)
 from app.schemas.document import DocumentResponse
 from app.utils.logger import setup_logger
 
@@ -38,7 +41,7 @@ router = APIRouter()
     **Expected Cost:** ~$0.0039/doc average (73% savings vs single-stage)
 
     **Returns:** Complete analysis with anomalies, risk score, and cost breakdown
-    """
+    """,
 )
 async def analyze_document_gpt5(
     document_id: str,
@@ -50,25 +53,27 @@ async def analyze_document_gpt5(
 
     Replaces old anomaly detection with cost-optimized cascade analysis.
     """
-    logger.info(f"GPT-5 analysis requested for document {document_id} by user {current_user.email}")
+    logger.info(
+        f"GPT-5 analysis requested for document {document_id} by user {current_user.email}"
+    )
 
     # Check document exists and belongs to user
-    document = db.query(Document).filter(
-        Document.id == document_id,
-        Document.user_id == current_user.id
-    ).first()
+    document = (
+        db.query(Document)
+        .filter(Document.id == document_id, Document.user_id == current_user.id)
+        .first()
+    )
 
     if not document:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Document not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Document not found"
         )
 
     # Get document text
     if not document.text:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Document has no text content"
+            detail="Document has no text content",
         )
 
     # Extract metadata
@@ -86,7 +91,7 @@ async def analyze_document_gpt5(
             document_text=document.text,
             document_id=document_id,
             company_name=company_name,
-            industry=industry
+            industry=industry,
         )
 
         logger.info(
@@ -96,7 +101,9 @@ async def analyze_document_gpt5(
         )
 
         # Save analysis log
-        analysis_log = _create_analysis_log(result, current_user.id, company_name, industry)
+        analysis_log = _create_analysis_log(
+            result, current_user.id, company_name, industry
+        )
         db.add(analysis_log)
 
         # Save anomalies to database
@@ -123,17 +130,21 @@ async def analyze_document_gpt5(
             "risk_score": document.risk_score,
             "risk_level": document.risk_level,
             "cost_breakdown": {
-                "stage1_cost": result.stage1_result.get("cost") if result.stage1_result else 0,
-                "stage2_cost": result.stage2_result.get("cost") if result.stage2_result else 0,
+                "stage1_cost": (
+                    result.stage1_result.get("cost") if result.stage1_result else 0
+                ),
+                "stage2_cost": (
+                    result.stage2_result.get("cost") if result.stage2_result else 0
+                ),
                 "total_cost": result.cost,
-                "savings_vs_single_stage": round(0.015 - result.cost, 6)
+                "savings_vs_single_stage": round(0.015 - result.cost, 6),
             },
             "metrics": {
                 "stage_reached": result.stage,
                 "escalated": result.escalated,
                 "processing_time": result.processing_time,
-                "confidence": result.confidence
-            }
+                "confidence": result.confidence,
+            },
         }
 
     except Exception as e:
@@ -145,7 +156,7 @@ async def analyze_document_gpt5(
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Analysis failed: {str(e)}"
+            detail=f"Analysis failed: {str(e)}",
         )
 
 
@@ -153,7 +164,7 @@ async def analyze_document_gpt5(
     "/analytics/cost-summary",
     response_model=dict,
     summary="Get Cost Analytics",
-    description="Get cost and performance analytics for GPT-5 two-stage system"
+    description="Get cost and performance analytics for GPT-5 two-stage system",
 )
 async def get_cost_analytics(
     limit: int = 100,
@@ -166,9 +177,13 @@ async def get_cost_analytics(
     Shows cost savings, escalation rate, and performance metrics.
     """
     # Get recent analysis logs for user
-    logs = db.query(AnalysisLog).filter(
-        AnalysisLog.user_id == current_user.id
-    ).order_by(AnalysisLog.created_at.desc()).limit(limit).all()
+    logs = (
+        db.query(AnalysisLog)
+        .filter(AnalysisLog.user_id == current_user.id)
+        .order_by(AnalysisLog.created_at.desc())
+        .limit(limit)
+        .all()
+    )
 
     if not logs:
         return {
@@ -176,7 +191,7 @@ async def get_cost_analytics(
             "total_cost": 0.0,
             "average_cost": 0.0,
             "escalation_rate": 0.0,
-            "total_savings": 0.0
+            "total_savings": 0.0,
         }
 
     # Calculate metrics
@@ -199,19 +214,27 @@ async def get_cost_analytics(
         "average_cost_per_document": round(average_cost, 6),
         "escalation_rate": round(escalation_rate * 100, 1),  # As percentage
         "total_savings_vs_single_stage": round(total_savings, 4),
-        "percent_savings": round((total_savings / single_stage_cost) * 100, 1) if single_stage_cost > 0 else 0,
+        "percent_savings": (
+            round((total_savings / single_stage_cost) * 100, 1)
+            if single_stage_cost > 0
+            else 0
+        ),
         "stage_distribution": {
             "stage1_only": stage1_only,
-            "stage2_escalated": stage2_reached
+            "stage2_escalated": stage2_reached,
         },
-        "average_processing_time": round(
-            sum(log.total_processing_time for log in logs) / len(logs), 2
-        ) if logs else 0,
+        "average_processing_time": (
+            round(sum(log.total_processing_time for log in logs) / len(logs), 2)
+            if logs
+            else 0
+        ),
         "target_metrics": {
             "target_cost": 0.0039,
             "target_escalation_rate": 24.0,
-            "cost_vs_target": round(((average_cost - 0.0039) / 0.0039) * 100, 1) if logs else 0
-        }
+            "cost_vs_target": (
+                round(((average_cost - 0.0039) / 0.0039) * 100, 1) if logs else 0
+            ),
+        },
     }
 
 
@@ -219,7 +242,7 @@ async def get_cost_analytics(
     "/documents/{document_id}/analysis-history",
     response_model=List[dict],
     summary="Get Analysis History",
-    description="Get all analysis runs for a document"
+    description="Get all analysis runs for a document",
 )
 async def get_analysis_history(
     document_id: str,
@@ -228,30 +251,30 @@ async def get_analysis_history(
 ):
     """Get all analysis runs for a specific document."""
     # Verify document ownership
-    document = db.query(Document).filter(
-        Document.id == document_id,
-        Document.user_id == current_user.id
-    ).first()
+    document = (
+        db.query(Document)
+        .filter(Document.id == document_id, Document.user_id == current_user.id)
+        .first()
+    )
 
     if not document:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Document not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Document not found"
         )
 
     # Get analysis logs
-    logs = db.query(AnalysisLog).filter(
-        AnalysisLog.document_id == document_id
-    ).order_by(AnalysisLog.created_at.desc()).all()
+    logs = (
+        db.query(AnalysisLog)
+        .filter(AnalysisLog.document_id == document_id)
+        .order_by(AnalysisLog.created_at.desc())
+        .all()
+    )
 
     return [log.to_dict() for log in logs]
 
 
 def _create_analysis_log(
-    result: AnalysisResult,
-    user_id: str,
-    company_name: str,
-    industry: str
+    result: AnalysisResult, user_id: str, company_name: str, industry: str
 ) -> AnalysisLog:
     """Create analysis log from orchestrator result."""
     # Count anomalies by severity
@@ -265,59 +288,83 @@ def _create_analysis_log(
         user_id=user_id,
         stage_reached=result.stage,
         escalated=result.escalated,
-
         # Stage 1
-        stage1_confidence=result.stage1_result.get("confidence") if result.stage1_result else None,
-        stage1_risk=result.stage1_result.get("overall_risk") if result.stage1_result else None,
+        stage1_confidence=(
+            result.stage1_result.get("confidence") if result.stage1_result else None
+        ),
+        stage1_risk=(
+            result.stage1_result.get("overall_risk") if result.stage1_result else None
+        ),
         stage1_cost=result.stage1_result.get("cost") if result.stage1_result else None,
-        stage1_processing_time=result.stage1_result.get("processing_time") if result.stage1_result else None,
+        stage1_processing_time=(
+            result.stage1_result.get("processing_time")
+            if result.stage1_result
+            else None
+        ),
         stage1_result=result.stage1_result,
-
         # Stage 2
-        stage2_confidence=result.stage2_result.get("confidence") if result.stage2_result else None,
-        stage2_risk=result.stage2_result.get("overall_risk") if result.stage2_result else None,
+        stage2_confidence=(
+            result.stage2_result.get("confidence") if result.stage2_result else None
+        ),
+        stage2_risk=(
+            result.stage2_result.get("overall_risk") if result.stage2_result else None
+        ),
         stage2_cost=result.stage2_result.get("cost") if result.stage2_result else None,
-        stage2_processing_time=result.stage2_result.get("processing_time") if result.stage2_result else None,
+        stage2_processing_time=(
+            result.stage2_result.get("processing_time")
+            if result.stage2_result
+            else None
+        ),
         stage2_result=result.stage2_result,
-
         # Final
         final_risk=result.overall_risk,
         final_confidence=result.confidence,
         total_cost=result.cost,
         total_processing_time=result.processing_time,
-
         # Anomalies
         anomaly_count=len(result.clauses),
         high_risk_count=high_count,
         medium_risk_count=medium_count,
         low_risk_count=low_count,
-
         # Metadata
         company_name=company_name,
-        industry=industry
+        industry=industry,
     )
 
 
-def _save_anomalies(db: Session, document_id: str, clauses: List[dict]) -> List[Anomaly]:
+def _save_anomalies(
+    db: Session, document_id: str, clauses: List[dict]
+) -> List[Anomaly]:
     """Save detected anomalies to database."""
     anomalies = []
 
     for clause_data in clauses:
         # Only save problematic clauses
-        if clause_data.get("classification") in ["ANOMALY", "FLAGGED", "PROBLEMATIC", "UNUSUAL"]:
+        if clause_data.get("classification") in [
+            "ANOMALY",
+            "FLAGGED",
+            "PROBLEMATIC",
+            "UNUSUAL",
+        ]:
             anomaly = Anomaly(
                 id=str(uuid.uuid4()),
                 document_id=document_id,
                 section=clause_data.get("section", "Unknown"),
                 clause_number=clause_data.get("clause_id", ""),
-                clause_text=clause_data.get("legal_reasoning", clause_data.get("reason", ""))[:5000],  # Truncate if too long
+                clause_text=clause_data.get(
+                    "legal_reasoning", clause_data.get("reason", "")
+                )[
+                    :5000
+                ],  # Truncate if too long
                 severity=clause_data.get("risk_level", "medium"),
-                explanation=clause_data.get("legal_reasoning", clause_data.get("reason", "")),
+                explanation=clause_data.get(
+                    "legal_reasoning", clause_data.get("reason", "")
+                ),
                 consumer_impact=clause_data.get("consumer_impact", ""),
                 recommendation=clause_data.get("recommendation", ""),
                 risk_category=clause_data.get("risk_category", "other"),
                 prevalence=0.0,  # GPT-5 doesn't calculate prevalence
-                detected_indicators=[]
+                detected_indicators=[],
             )
             anomalies.append(anomaly)
 
@@ -330,9 +377,5 @@ def _save_anomalies(db: Session, document_id: str, clauses: List[dict]) -> List[
 
 def _convert_risk_to_score(risk_level: str) -> float:
     """Convert risk level to numeric score (1-10)."""
-    mapping = {
-        "low": 2.0,
-        "medium": 5.5,
-        "high": 8.5
-    }
+    mapping = {"low": 2.0, "medium": 5.5, "high": 8.5}
     return mapping.get(risk_level, 5.0)

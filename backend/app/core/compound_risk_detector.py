@@ -25,7 +25,7 @@ class CompoundRiskDetector:
             "severity": "high",
             "description": "Subscription Trap: Auto-renewal combined with no refunds makes it difficult to escape",
             "consumer_impact": "You may be charged repeatedly with no way to get your money back.",
-            "recommendation": "Carefully track renewal dates and ensure you can cancel before renewal."
+            "recommendation": "Carefully track renewal dates and ensure you can cancel before renewal.",
         },
         "data_loss_vulnerability": {
             "required_indicators": ["content_loss", "unilateral_termination"],
@@ -33,15 +33,18 @@ class CompoundRiskDetector:
             "severity": "high",
             "description": "Data Loss Vulnerability: Service can be terminated without notice and data deleted without liability",
             "consumer_impact": "Your data could be permanently lost without warning or compensation.",
-            "recommendation": "Maintain regular backups of all important data stored with this service."
+            "recommendation": "Maintain regular backups of all important data stored with this service.",
         },
         "legal_protection_elimination": {
             "required_indicators": ["forced_arbitration_class_waiver", "rights_waiver"],
-            "optional_indicators": ["unlimited_liability", "broad_liability_disclaimer"],
+            "optional_indicators": [
+                "unlimited_liability",
+                "broad_liability_disclaimer",
+            ],
             "severity": "high",
             "description": "Legal Protection Elimination: Multiple clauses combine to remove your legal recourse",
             "consumer_impact": "You have extremely limited ability to seek legal remedies if something goes wrong.",
-            "recommendation": "Consider whether you're comfortable waiving this level of legal protection."
+            "recommendation": "Consider whether you're comfortable waiving this level of legal protection.",
         },
         "payment_exploitation": {
             "required_indicators": ["auto_payment_updates", "price_increase_no_notice"],
@@ -49,7 +52,7 @@ class CompoundRiskDetector:
             "severity": "high",
             "description": "Payment Exploitation: Automatic payment updates combined with price increases without notice",
             "consumer_impact": "You could be charged increasing amounts on updated cards without your knowledge.",
-            "recommendation": "Monitor your billing closely and disable automatic payment updates if possible."
+            "recommendation": "Monitor your billing closely and disable automatic payment updates if possible.",
         },
         "content_rights_grab": {
             "required_indicators": ["broad_usage_rights"],
@@ -57,7 +60,7 @@ class CompoundRiskDetector:
             "severity": "medium",
             "description": "Content Rights Grab: Broad perpetual license to your content",
             "consumer_impact": "The company can use your content indefinitely for any purpose, including commercial use.",
-            "recommendation": "Only upload content you're comfortable with the company using without restriction."
+            "recommendation": "Only upload content you're comfortable with the company using without restriction.",
         },
         "privacy_vulnerability": {
             "required_indicators": ["data_sharing", "monitoring_surveillance"],
@@ -65,7 +68,7 @@ class CompoundRiskDetector:
             "severity": "medium",
             "description": "Privacy Vulnerability: Extensive monitoring combined with unrestricted data sharing",
             "consumer_impact": "Your activities are tracked and shared with third parties without meaningful restriction.",
-            "recommendation": "Assume all your activity is monitored and may be sold to advertisers."
+            "recommendation": "Assume all your activity is monitored and may be sold to advertisers.",
         },
         "unilateral_control": {
             "required_indicators": ["unilateral_changes", "unilateral_termination"],
@@ -73,16 +76,19 @@ class CompoundRiskDetector:
             "severity": "medium",
             "description": "Unilateral Control: Company retains complete control to change or end terms at will",
             "consumer_impact": "The company can change the rules or kick you out at any time without warning.",
-            "recommendation": "Don't rely heavily on this service for critical needs."
+            "recommendation": "Don't rely heavily on this service for critical needs.",
         },
         "liability_asymmetry": {
-            "required_indicators": ["unlimited_liability", "broad_liability_disclaimer"],
+            "required_indicators": [
+                "unlimited_liability",
+                "broad_liability_disclaimer",
+            ],
             "optional_indicators": ["rights_waiver"],
             "severity": "high",
             "description": "Liability Asymmetry: You have unlimited liability while company has none",
             "consumer_impact": "You're responsible for everything, but the company isn't responsible for anything.",
-            "recommendation": "Consider liability insurance or alternative services with more balanced terms."
-        }
+            "recommendation": "Consider liability insurance or alternative services with more balanced terms.",
+        },
     }
 
     def detect_compound_risks(self, anomalies: List[Dict]) -> List[Dict]:
@@ -128,8 +134,7 @@ class CompoundRiskDetector:
 
                 # Find related anomalies
                 related_anomalies = self._find_related_anomalies(
-                    anomalies,
-                    required.union(present_optional)
+                    anomalies, required.union(present_optional)
                 )
 
                 compound_risk = {
@@ -142,7 +147,7 @@ class CompoundRiskDetector:
                     "required_indicators": list(required),
                     "matched_optional_indicators": list(present_optional),
                     "related_anomalies": related_anomalies,
-                    "anomaly_count": len(related_anomalies)
+                    "anomaly_count": len(related_anomalies),
                 }
 
                 compound_risks.append(compound_risk)
@@ -173,9 +178,7 @@ class CompoundRiskDetector:
         return all_indicators
 
     def _find_related_anomalies(
-        self,
-        anomalies: List[Dict],
-        relevant_indicators: Set[str]
+        self, anomalies: List[Dict], relevant_indicators: Set[str]
     ) -> List[Dict]:
         """
         Find anomalies that contain any of the relevant indicators.
@@ -197,12 +200,15 @@ class CompoundRiskDetector:
 
             if anomaly_indicator_names.intersection(relevant_indicators):
                 # Include simplified version
-                related.append({
-                    "section": anomaly.get("section"),
-                    "clause_number": anomaly.get("clause_number"),
-                    "clause_text": anomaly.get("clause_text", "")[:100] + "...",  # Truncate
-                    "severity": anomaly.get("severity")
-                })
+                related.append(
+                    {
+                        "section": anomaly.get("section"),
+                        "clause_number": anomaly.get("clause_number"),
+                        "clause_text": anomaly.get("clause_text", "")[:100]
+                        + "...",  # Truncate
+                        "severity": anomaly.get("severity"),
+                    }
+                )
 
         return related
 
@@ -222,7 +228,7 @@ class CompoundRiskDetector:
                 "compound_risk_level": "None",
                 "compound_risk_count": 0,
                 "high_severity_count": 0,
-                "medium_severity_count": 0
+                "medium_severity_count": 0,
             }
 
         # Count by severity
@@ -251,5 +257,5 @@ class CompoundRiskDetector:
             "compound_risk_count": len(compound_risks),
             "high_severity_count": high_count,
             "medium_severity_count": medium_count,
-            "detected_patterns": [r["compound_risk_type"] for r in compound_risks]
+            "detected_patterns": [r["compound_risk_type"] for r in compound_risks],
         }

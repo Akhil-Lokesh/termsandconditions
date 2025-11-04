@@ -23,8 +23,12 @@ class User(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    documents = relationship("Document", back_populates="user", cascade="all, delete-orphan")
-    analysis_logs = relationship("AnalysisLog", back_populates="user", cascade="all, delete-orphan")
+    documents = relationship(
+        "Document", back_populates="user", cascade="all, delete-orphan"
+    )
+    analysis_logs = relationship(
+        "AnalysisLog", back_populates="user", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<User(id={self.id}, email={self.email})>"

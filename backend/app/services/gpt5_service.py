@@ -44,7 +44,7 @@ class GPT5Service:
         model: str = "gpt-5-nano",
         reasoning_effort: str = "medium",
         max_completion_tokens: int = 2000,
-        response_format: Optional[Dict] = None
+        response_format: Optional[Dict] = None,
     ) -> str:
         """
         Create response using GPT-5 Responses API.
@@ -63,20 +63,19 @@ class GPT5Service:
             Exception: If API call fails
         """
         try:
-            logger.debug(f"Creating GPT-5 response with model={model}, effort={reasoning_effort}")
+            logger.debug(
+                f"Creating GPT-5 response with model={model}, effort={reasoning_effort}"
+            )
 
             # CORRECT: Use responses.create() for GPT-5
             response = await self.client.responses.create(
                 model=model,
                 input_text=prompt,  # Use input_text for Responses API
-
                 # CRITICAL PARAMETERS:
                 max_completion_tokens=max_completion_tokens,  # NOT max_tokens!
                 reasoning_effort=reasoning_effort,  # "low" | "medium" | "high"
-
                 # Optional JSON formatting
                 response_format=response_format,
-
                 # Temperature is IGNORED for reasoning models (fixed by OpenAI)
                 # Don't include: temperature, top_p, frequency_penalty, presence_penalty
             )
@@ -100,7 +99,7 @@ class GPT5Service:
         prompt: str,
         model: str = "gpt-5-nano",
         reasoning_effort: str = "medium",
-        max_completion_tokens: int = 2000
+        max_completion_tokens: int = 2000,
     ) -> Dict[str, Any]:
         """
         Create JSON response using GPT-5.
@@ -124,7 +123,7 @@ class GPT5Service:
                 model=model,
                 reasoning_effort=reasoning_effort,
                 max_completion_tokens=max_completion_tokens,
-                response_format={"type": "json_object"}
+                response_format={"type": "json_object"},
             )
 
             # Parse JSON
@@ -141,7 +140,7 @@ class GPT5Service:
         clause_text: str,
         indicators: List[Dict],
         prevalence: float,
-        severity_guess: str
+        severity_guess: str,
     ) -> Dict[str, Any]:
         """
         Analyze T&C clause using GPT-5-nano for anomaly detection.
@@ -189,7 +188,7 @@ RESPOND IN JSON FORMAT:
                 prompt=prompt,
                 model="gpt-5-nano",  # Fastest, cheapest
                 reasoning_effort="medium",  # Good balance
-                max_completion_tokens=1000
+                max_completion_tokens=1000,
             )
 
             return result
@@ -203,13 +202,14 @@ RESPOND IN JSON FORMAT:
                 "why_risky": "Pattern matching detected concerning language",
                 "confirm_severity": severity_guess.upper(),
                 "confidence": 0.7,
-                "consumer_impact": "Review this clause carefully"
+                "consumer_impact": "Review this clause carefully",
             }
 
 
 # ============================================================================
 # ALTERNATIVE: Chat Completions API (if Responses API doesn't work)
 # ============================================================================
+
 
 class GPT5ChatFallback:
     """
@@ -223,10 +223,7 @@ class GPT5ChatFallback:
         self.client = AsyncOpenAI(api_key=api_key or settings.OPENAI_API_KEY)
 
     async def create_response(
-        self,
-        prompt: str,
-        model: str = "gpt-5-nano",
-        max_tokens: int = 2000
+        self, prompt: str, model: str = "gpt-5-nano", max_tokens: int = 2000
     ) -> str:
         """
         Fallback using Chat Completions API.
@@ -236,9 +233,7 @@ class GPT5ChatFallback:
         try:
             response = await self.client.chat.completions.create(
                 model=model,
-                messages=[
-                    {"role": "user", "content": prompt}
-                ],
+                messages=[{"role": "user", "content": prompt}],
                 max_tokens=max_tokens,
                 # Don't use temperature for reasoning models
             )
@@ -254,6 +249,7 @@ class GPT5ChatFallback:
 # USAGE EXAMPLES
 # ============================================================================
 
+
 async def example_basic_usage():
     """Example: Basic GPT-5 usage"""
     gpt5 = GPT5Service()
@@ -262,7 +258,7 @@ async def example_basic_usage():
         prompt="Explain what arbitration clauses mean for consumers",
         model="gpt-5-nano",
         reasoning_effort="medium",
-        max_completion_tokens=500
+        max_completion_tokens=500,
     )
 
     print(response)
@@ -280,7 +276,7 @@ async def example_json_usage():
         Return: {"risk": "high/medium/low", "reason": "explanation"}
         """,
         model="gpt-5-nano",
-        reasoning_effort="medium"
+        reasoning_effort="medium",
     )
 
     print(result)  # {'risk': 'high', 'reason': '...'}
@@ -291,14 +287,17 @@ async def example_anomaly_detection():
     gpt5 = GPT5Service()
 
     indicators = [
-        {"indicator": "unilateral_termination", "description": "Can terminate without cause"}
+        {
+            "indicator": "unilateral_termination",
+            "description": "Can terminate without cause",
+        }
     ]
 
     analysis = await gpt5.analyze_clause(
         clause_text="We reserve the right to terminate your access at any time.",
         indicators=indicators,
         prevalence=0.25,
-        severity_guess="high"
+        severity_guess="high",
     )
 
     print(analysis)

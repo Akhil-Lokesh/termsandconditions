@@ -7,16 +7,19 @@ from datetime import datetime
 
 class DocumentBase(BaseModel):
     """Base document schema."""
+
     filename: str
 
 
 class DocumentCreate(DocumentBase):
     """Schema for document creation."""
+
     pass
 
 
 class DocumentMetadata(BaseModel):
     """Schema for document metadata."""
+
     company: Optional[str] = None
     jurisdiction: Optional[str] = None
     effective_date: Optional[str] = None
@@ -26,13 +29,24 @@ class DocumentMetadata(BaseModel):
 
 class DocumentResponse(BaseModel):
     """Schema for document response."""
+
     id: str
     filename: str
-    metadata: Optional[Dict[str, Any]] = Field(default=None, description="Document metadata (company, jurisdiction, etc.)")
-    page_count: Optional[int] = Field(default=None, description="Number of pages in document")
-    clause_count: Optional[int] = Field(default=None, description="Number of clauses found")
-    anomaly_count: Optional[int] = Field(default=0, description="Number of anomalies detected")
-    processing_status: str = Field(description="Processing status: pending, completed, failed, etc.")
+    metadata: Optional[Dict[str, Any]] = Field(
+        default=None, description="Document metadata (company, jurisdiction, etc.)"
+    )
+    page_count: Optional[int] = Field(
+        default=None, description="Number of pages in document"
+    )
+    clause_count: Optional[int] = Field(
+        default=None, description="Number of clauses found"
+    )
+    anomaly_count: Optional[int] = Field(
+        default=0, description="Number of anomalies detected"
+    )
+    processing_status: str = Field(
+        description="Processing status: pending, completed, failed, etc."
+    )
     created_at: datetime = Field(description="Document upload timestamp")
 
     model_config = {
@@ -44,20 +58,21 @@ class DocumentResponse(BaseModel):
                 "metadata": {
                     "company": "Example Corp",
                     "jurisdiction": "California, USA",
-                    "effective_date": "2024-01-01"
+                    "effective_date": "2024-01-01",
                 },
                 "page_count": 15,
                 "clause_count": 42,
                 "anomaly_count": 3,
                 "processing_status": "completed",
-                "created_at": "2024-10-24T10:30:00Z"
+                "created_at": "2024-10-24T10:30:00Z",
             }
-        }
+        },
     }
 
 
 class DocumentListResponse(BaseModel):
     """Schema for list of documents with pagination."""
+
     documents: List[DocumentResponse]
     total: int = Field(description="Total number of documents")
     skip: int = Field(default=0, description="Number of documents skipped")
@@ -66,6 +81,7 @@ class DocumentListResponse(BaseModel):
 
 class DocumentWithAnomalies(DocumentResponse):
     """Schema for document with anomaly preview."""
+
     anomaly_count: int = 0
     high_risk_count: int = 0
     medium_risk_count: int = 0
@@ -74,11 +90,15 @@ class DocumentWithAnomalies(DocumentResponse):
 
 class ComparisonRequest(BaseModel):
     """Schema for document comparison request."""
-    document_ids: List[str] = Field(..., min_length=2, description="List of document IDs to compare")
+
+    document_ids: List[str] = Field(
+        ..., min_length=2, description="List of document IDs to compare"
+    )
 
 
 class DocumentComparison(BaseModel):
     """Schema for a single document in comparison."""
+
     document_id: str
     filename: str
     unique_clauses: int = 0
@@ -88,6 +108,7 @@ class DocumentComparison(BaseModel):
 
 class ComparisonResponse(BaseModel):
     """Schema for document comparison response."""
+
     documents: List[DocumentComparison]
     total_documents: int
     common_clauses: List[str] = []

@@ -42,7 +42,9 @@ router = APIRouter()
 )
 async def get_anomalies(
     document_id: str,
-    severity: Optional[str] = Query(None, description="Filter by severity: low, medium, high"),
+    severity: Optional[str] = Query(
+        None, description="Filter by severity: low, medium, high"
+    ),
     section: Optional[str] = Query(None, description="Filter by section name"),
     skip: int = 0,
     limit: int = 100,
@@ -57,10 +59,14 @@ async def get_anomalies(
     logger.info(f"Anomalies requested for document: {document_id}")
 
     # Verify document access
-    document = db.query(Document).filter(
-        Document.id == document_id,
-        Document.user_id == current_user.id,
-    ).first()
+    document = (
+        db.query(Document)
+        .filter(
+            Document.id == document_id,
+            Document.user_id == current_user.id,
+        )
+        .first()
+    )
 
     if not document:
         raise HTTPException(
@@ -85,27 +91,33 @@ async def get_anomalies(
 
     # Get anomalies with pagination and sorting
     from sqlalchemy import case
-    anomalies = query.order_by(
-        # Sort by severity: high > medium > low
-        case(
-            (Anomaly.severity == "high", 1),
-            (Anomaly.severity == "medium", 2),
-            (Anomaly.severity == "low", 3),
-            else_=4
-        ),
-        # Then by prevalence (rarest first)
-        Anomaly.prevalence.asc(),
-    ).offset(skip).limit(limit).all()
+
+    anomalies = (
+        query.order_by(
+            # Sort by severity: high > medium > low
+            case(
+                (Anomaly.severity == "high", 1),
+                (Anomaly.severity == "medium", 2),
+                (Anomaly.severity == "low", 3),
+                else_=4,
+            ),
+            # Then by prevalence (rarest first)
+            Anomaly.prevalence.asc(),
+        )
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 
     logger.info(f"Found {total} anomalies (returning {len(anomalies)})")
 
     # Calculate statistics
-    stats_query = db.query(
-        Anomaly.severity,
-        func.count(Anomaly.id).label("count")
-    ).filter(
-        Anomaly.document_id == document_id
-    ).group_by(Anomaly.severity).all()
+    stats_query = (
+        db.query(Anomaly.severity, func.count(Anomaly.id).label("count"))
+        .filter(Anomaly.document_id == document_id)
+        .group_by(Anomaly.severity)
+        .all()
+    )
 
     severity_counts = {severity: count for severity, count in stats_query}
 
@@ -114,7 +126,11 @@ async def get_anomalies(
             AnomalyResponse(
                 id=a.id,
                 document_id=a.document_id,
-                clause_text=a.clause_text[:500] + "..." if len(a.clause_text) > 500 else a.clause_text,
+                clause_text=(
+                    a.clause_text[:500] + "..."
+                    if len(a.clause_text) > 500
+                    else a.clause_text
+                ),
                 section=a.section,
                 clause_number=a.clause_number,
                 severity=a.severity,
@@ -157,10 +173,14 @@ async def get_anomaly_detail(
         )
 
     # Verify user has access to this document
-    document = db.query(Document).filter(
-        Document.id == anomaly.document_id,
-        Document.user_id == current_user.id,
-    ).first()
+    document = (
+        db.query(Document)
+        .filter(
+            Document.id == anomaly.document_id,
+            Document.user_id == current_user.id,
+        )
+        .first()
+    )
 
     if not document:
         raise HTTPException(

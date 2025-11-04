@@ -79,9 +79,13 @@ class PineconeService:
 
         except PineconeException as e:
             logger.error(f"Pinecone initialization error: {e}")
-            raise PineconeServiceError(f"Failed to initialize Pinecone: {str(e)}") from e
+            raise PineconeServiceError(
+                f"Failed to initialize Pinecone: {str(e)}"
+            ) from e
         except Exception as e:
-            logger.error(f"Unexpected error during Pinecone initialization: {e}", exc_info=True)
+            logger.error(
+                f"Unexpected error during Pinecone initialization: {e}", exc_info=True
+            )
             raise PineconeServiceError(f"Unexpected error: {str(e)}") from e
 
     async def upsert_chunks(
@@ -105,28 +109,36 @@ class PineconeService:
             PineconeServiceError: If upsert operation fails
         """
         if not self.index:
-            raise PineconeServiceError("Pinecone not initialized. Call initialize() first.")
+            raise PineconeServiceError(
+                "Pinecone not initialized. Call initialize() first."
+            )
 
         try:
             # Build vectors for upsert
             vectors = []
             for idx, chunk in enumerate(chunks):
                 vector_id = f"{document_id}_chunk_{idx}"
-                
+
                 # Prepare metadata (Pinecone has size limits)
                 metadata = {
                     **chunk.get("metadata", {}),
                     "document_id": document_id,
                     "chunk_index": idx,
                     # Store truncated text in metadata for retrieval
-                    "text": chunk["text"][:1000] if len(chunk["text"]) > 1000 else chunk["text"],
+                    "text": (
+                        chunk["text"][:1000]
+                        if len(chunk["text"]) > 1000
+                        else chunk["text"]
+                    ),
                 }
 
-                vectors.append({
-                    "id": vector_id,
-                    "values": chunk["embedding"],
-                    "metadata": metadata,
-                })
+                vectors.append(
+                    {
+                        "id": vector_id,
+                        "values": chunk["embedding"],
+                        "metadata": metadata,
+                    }
+                )
 
             # Upsert in batches (Pinecone recommends 100-200 per batch)
             BATCH_SIZE = 100
@@ -185,7 +197,9 @@ class PineconeService:
             PineconeServiceError: If query operation fails
         """
         if not self.index:
-            raise PineconeServiceError("Pinecone not initialized. Call initialize() first.")
+            raise PineconeServiceError(
+                "Pinecone not initialized. Call initialize() first."
+            )
 
         try:
             logger.debug(
@@ -204,11 +218,13 @@ class PineconeService:
             # Parse matches
             matches = []
             for match in results.get("matches", []):
-                matches.append({
-                    "id": match["id"],
-                    "score": match["score"],
-                    "metadata": match.get("metadata", {}),
-                })
+                matches.append(
+                    {
+                        "id": match["id"],
+                        "score": match["score"],
+                        "metadata": match.get("metadata", {}),
+                    }
+                )
 
             logger.debug(f"Found {len(matches)} matches")
             return matches
@@ -239,12 +255,12 @@ class PineconeService:
             PineconeServiceError: If delete operation fails
         """
         if not self.index:
-            raise PineconeServiceError("Pinecone not initialized. Call initialize() first.")
+            raise PineconeServiceError(
+                "Pinecone not initialized. Call initialize() first."
+            )
 
         try:
-            logger.info(
-                f"Deleting document {document_id} from namespace '{namespace}'"
-            )
+            logger.info(f"Deleting document {document_id} from namespace '{namespace}'")
 
             # Delete by metadata filter
             self.index.delete(
@@ -280,7 +296,9 @@ class PineconeService:
             PineconeServiceError: If operation fails
         """
         if not self.index:
-            raise PineconeServiceError("Pinecone not initialized. Call initialize() first.")
+            raise PineconeServiceError(
+                "Pinecone not initialized. Call initialize() first."
+            )
 
         try:
             stats = self.index.describe_index_stats()

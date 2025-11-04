@@ -15,7 +15,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 class RetryConfig:
@@ -27,7 +27,7 @@ class RetryConfig:
         initial_delay: float = 1.0,
         max_delay: float = 60.0,
         exponential_base: float = 2.0,
-        jitter: bool = True
+        jitter: bool = True,
     ):
         self.max_retries = max_retries
         self.initial_delay = initial_delay
@@ -36,10 +36,7 @@ class RetryConfig:
         self.jitter = jitter
 
 
-def calculate_backoff(
-    attempt: int,
-    config: RetryConfig
-) -> float:
+def calculate_backoff(attempt: int, config: RetryConfig) -> float:
     """
     Calculate exponential backoff with jitter.
 
@@ -51,13 +48,13 @@ def calculate_backoff(
         Delay in seconds
     """
     delay = min(
-        config.initial_delay * (config.exponential_base ** attempt),
-        config.max_delay
+        config.initial_delay * (config.exponential_base**attempt), config.max_delay
     )
 
     # Add jitter to prevent thundering herd
     if config.jitter:
         import random
+
         delay = delay * (0.5 + random.random() * 0.5)
 
     return delay
@@ -66,7 +63,7 @@ def calculate_backoff(
 def with_retry(
     config: Optional[RetryConfig] = None,
     retry_on: tuple = (Exception,),
-    log_retries: bool = True
+    log_retries: bool = True,
 ):
     """
     Decorator for adding retry logic to async functions.
@@ -136,32 +133,18 @@ class OpenAIRetryHandler:
 
     def __init__(self):
         self.rate_limit_config = RetryConfig(
-            max_retries=5,
-            initial_delay=2.0,
-            max_delay=120.0,
-            exponential_base=2.0
+            max_retries=5, initial_delay=2.0, max_delay=120.0, exponential_base=2.0
         )
 
         self.timeout_config = RetryConfig(
-            max_retries=2,
-            initial_delay=0.5,
-            max_delay=2.0,
-            exponential_base=1.5
+            max_retries=2, initial_delay=0.5, max_delay=2.0, exponential_base=1.5
         )
 
         self.standard_config = RetryConfig(
-            max_retries=3,
-            initial_delay=1.0,
-            max_delay=30.0,
-            exponential_base=2.0
+            max_retries=3, initial_delay=1.0, max_delay=30.0, exponential_base=2.0
         )
 
-    async def call_with_retry(
-        self,
-        func: Callable,
-        *args,
-        **kwargs
-    ) -> Any:
+    async def call_with_retry(self, func: Callable, *args, **kwargs) -> Any:
         """
         Call function with intelligent retry based on error type.
 
@@ -182,15 +165,13 @@ class OpenAIRetryHandler:
                 if "RateLimitError" in error_type:
                     config = self.rate_limit_config
                     logger.warning(
-                        f"Rate limit hit (attempt {attempt + 1}). "
-                        f"Backing off..."
+                        f"Rate limit hit (attempt {attempt + 1}). " f"Backing off..."
                     )
 
                 elif "Timeout" in error_type:
                     config = self.timeout_config
                     logger.warning(
-                        f"Timeout (attempt {attempt + 1}). "
-                        f"Quick retry..."
+                        f"Timeout (attempt {attempt + 1}). " f"Quick retry..."
                     )
 
                 elif "APIError" in error_type or "APIConnectionError" in error_type:
@@ -225,11 +206,7 @@ class OpenAIRetryHandler:
 openai_retry_handler = OpenAIRetryHandler()
 
 
-async def call_openai_with_retry(
-    func: Callable,
-    *args,
-    **kwargs
-) -> Any:
+async def call_openai_with_retry(func: Callable, *args, **kwargs) -> Any:
     """
     Convenience function for calling OpenAI API with retry.
 

@@ -5,7 +5,17 @@ Tracks every analysis with cost, stage, confidence, and results.
 Used for analytics, cost tracking, and quality monitoring.
 """
 
-from sqlalchemy import Column, String, Integer, Float, DateTime, ForeignKey, JSON, Boolean, Text
+from sqlalchemy import (
+    Column,
+    String,
+    Integer,
+    Float,
+    DateTime,
+    ForeignKey,
+    JSON,
+    Boolean,
+    Text,
+)
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import uuid
@@ -110,17 +120,25 @@ class AnalysisLog(Base):
             "anomaly_count": self.anomaly_count,
             "cost_efficiency": self.cost_efficiency,
             "created_at": self.created_at.isoformat(),
-            "stage1": {
-                "confidence": self.stage1_confidence,
-                "risk": self.stage1_risk,
-                "cost": self.stage1_cost,
-                "processing_time": self.stage1_processing_time
-            } if self.stage1_confidence is not None else None,
-            "stage2": {
-                "confidence": self.stage2_confidence,
-                "risk": self.stage2_risk,
-                "cost": self.stage2_cost,
-                "processing_time": self.stage2_processing_time,
-                "matched_stage1": self.was_stage1_correct
-            } if self.escalated else None
+            "stage1": (
+                {
+                    "confidence": self.stage1_confidence,
+                    "risk": self.stage1_risk,
+                    "cost": self.stage1_cost,
+                    "processing_time": self.stage1_processing_time,
+                }
+                if self.stage1_confidence is not None
+                else None
+            ),
+            "stage2": (
+                {
+                    "confidence": self.stage2_confidence,
+                    "risk": self.stage2_risk,
+                    "cost": self.stage2_cost,
+                    "processing_time": self.stage2_processing_time,
+                    "matched_stage1": self.was_stage1_correct,
+                }
+                if self.escalated
+                else None
+            ),
         }

@@ -57,7 +57,7 @@ class GPT5Stage2Analyzer:
         document_id: str,
         stage1_result: Optional[Dict[str, Any]] = None,
         company_name: str = "Unknown",
-        industry: str = "general"
+        industry: str = "general",
     ) -> Dict[str, Any]:
         """
         Perform deep legal analysis of T&C document.
@@ -110,18 +110,13 @@ class GPT5Stage2Analyzer:
 
         # Build deep analysis prompt
         prompt = self._build_deep_analysis_prompt(
-            document_text,
-            company_name,
-            industry,
-            stage1_result
+            document_text, company_name, industry, stage1_result
         )
 
         # Call GPT-5
         try:
             response = await self.openai.create_structured_completion(
-                prompt=prompt,
-                model=self.model_name,
-                temperature=self.TEMPERATURE
+                prompt=prompt, model=self.model_name, temperature=self.TEMPERATURE
             )
 
             # Parse JSON response
@@ -144,8 +139,7 @@ class GPT5Stage2Analyzer:
             # Validate Stage 1 if provided
             if stage1_result:
                 result["stage1_validation"] = self._validate_stage1(
-                    stage1_result,
-                    result
+                    stage1_result, result
                 )
 
             logger.info(
@@ -171,7 +165,7 @@ class GPT5Stage2Analyzer:
         document_text: str,
         company_name: str,
         industry: str,
-        stage1_result: Optional[Dict[str, Any]]
+        stage1_result: Optional[Dict[str, Any]],
     ) -> str:
         """
         Build comprehensive analysis prompt for GPT-5.
@@ -182,7 +176,8 @@ class GPT5Stage2Analyzer:
         stage1_context = ""
         if stage1_result:
             anomalies = [
-                c for c in stage1_result.get("clauses", [])
+                c
+                for c in stage1_result.get("clauses", [])
                 if c.get("classification") == "ANOMALY"
             ]
             if anomalies:
@@ -315,7 +310,7 @@ JSON Response:"""
                 "summary",
                 "clauses",
                 "legal_concerns",
-                "recommendations"
+                "recommendations",
             ]
 
             for field in required_fields:
@@ -328,7 +323,9 @@ JSON Response:"""
                 raise ValueError("Confidence must be numeric")
 
             if confidence < 0.8 or confidence > 1.0:
-                logger.warning(f"Stage 2 confidence {confidence} unusual, clamping to 0.8-1.0")
+                logger.warning(
+                    f"Stage 2 confidence {confidence} unusual, clamping to 0.8-1.0"
+                )
                 result["confidence"] = max(0.8, min(1.0, confidence))
 
             # Validate overall_risk
@@ -354,10 +351,7 @@ JSON Response:"""
             raise
 
     def _fallback_parse(
-        self,
-        response: str,
-        document_id: str,
-        start_time: float
+        self, response: str, document_id: str, start_time: float
     ) -> Dict[str, Any]:
         """
         Fallback parsing when JSON parsing fails.
@@ -375,9 +369,13 @@ JSON Response:"""
 
         # Extract summary if possible
         summary_match = re.search(r'"summary"\s*:\s*"([^"]+)"', response)
-        summary = summary_match.group(1) if summary_match else (
-            "Stage 2 analysis completed but response parsing failed. "
-            "Manual review recommended."
+        summary = (
+            summary_match.group(1)
+            if summary_match
+            else (
+                "Stage 2 analysis completed but response parsing failed. "
+                "Manual review recommended."
+            )
         )
 
         fallback_result = {
@@ -385,22 +383,24 @@ JSON Response:"""
             "confidence": confidence,
             "summary": summary,
             "clauses": [],
-            "legal_concerns": [{
-                "issue": "Response Parsing Error",
-                "severity": "medium",
-                "description": "Stage 2 analysis completed but structured data extraction failed",
-                "affected_clauses": [],
-                "legal_basis": "Manual review required"
-            }],
+            "legal_concerns": [
+                {
+                    "issue": "Response Parsing Error",
+                    "severity": "medium",
+                    "description": "Stage 2 analysis completed but structured data extraction failed",
+                    "affected_clauses": [],
+                    "legal_basis": "Manual review required",
+                }
+            ],
             "consumer_impact": {
                 "financial_risk": "unknown",
                 "rights_waived": [],
                 "hidden_obligations": [],
-                "enforceability_concerns": []
+                "enforceability_concerns": [],
             },
             "recommendations": [
                 "Manual legal review recommended due to parsing error",
-                "Full GPT-5 analysis was performed but structured extraction failed"
+                "Full GPT-5 analysis was performed but structured extraction failed",
             ],
             "industry_comparison": "Unable to extract from malformed response",
             "overall_assessment": summary,
@@ -410,16 +410,14 @@ JSON Response:"""
             "document_id": document_id,
             "timestamp": datetime.utcnow().isoformat(),
             "requires_escalation": False,
-            "parsing_error": True
+            "parsing_error": True,
         }
 
         logger.warning(f"Stage 2 fallback result: {fallback_result['overall_risk']}")
         return fallback_result
 
     def _validate_stage1(
-        self,
-        stage1_result: Dict[str, Any],
-        stage2_result: Dict[str, Any]
+        self, stage1_result: Dict[str, Any], stage2_result: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
         Validate Stage 1 classification against Stage 2 findings.
@@ -432,15 +430,21 @@ JSON Response:"""
         agreement = stage1_risk == stage2_risk
 
         # Count anomalies flagged in each stage
-        stage1_anomalies = len([
-            c for c in stage1_result.get("clauses", [])
-            if c.get("classification") in ["ANOMALY", "FLAGGED"]
-        ])
+        stage1_anomalies = len(
+            [
+                c
+                for c in stage1_result.get("clauses", [])
+                if c.get("classification") in ["ANOMALY", "FLAGGED"]
+            ]
+        )
 
-        stage2_problems = len([
-            c for c in stage2_result.get("clauses", [])
-            if c.get("classification") in ["PROBLEMATIC", "UNUSUAL"]
-        ])
+        stage2_problems = len(
+            [
+                c
+                for c in stage2_result.get("clauses", [])
+                if c.get("classification") in ["PROBLEMATIC", "UNUSUAL"]
+            ]
+        )
 
         validation = {
             "agreement": agreement,
@@ -449,7 +453,7 @@ JSON Response:"""
             "stage1_anomaly_count": stage1_anomalies,
             "stage2_problem_count": stage2_problems,
             "stage1_confidence": stage1_result.get("confidence", 0),
-            "assessment": "confirmed" if agreement else "refined"
+            "assessment": "confirmed" if agreement else "refined",
         }
 
         if not agreement:

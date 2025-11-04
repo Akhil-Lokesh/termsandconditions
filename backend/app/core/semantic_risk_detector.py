@@ -24,63 +24,63 @@ class SemanticRiskDetector:
         "unilateral_termination": [
             "We can terminate your account at any time without notice or reason.",
             "Service may be discontinued immediately at our sole discretion.",
-            "We reserve the right to end your access without explanation."
+            "We reserve the right to end your access without explanation.",
         ],
         "unlimited_liability": [
             "You are liable for all damages and agree to indemnify us completely.",
             "You assume full responsibility for any claims against us.",
-            "You will defend and hold us harmless from all losses."
+            "You will defend and hold us harmless from all losses.",
         ],
         "forced_arbitration": [
             "You waive your right to sue and agree to binding arbitration only.",
             "No class action lawsuits - all disputes must be resolved individually.",
-            "You give up your right to a jury trial and court proceedings."
+            "You give up your right to a jury trial and court proceedings.",
         ],
         "auto_payment_updates": [
             "We will automatically update your payment method without asking.",
             "Billing information may be changed using account updater services.",
-            "New credit card details will be charged without your consent."
+            "New credit card details will be charged without your consent.",
         ],
         "no_refund": [
             "All payments are final and non-refundable under any circumstances.",
             "No money back guarantees - all sales are final.",
-            "You cannot get a refund even if you cancel immediately."
+            "You cannot get a refund even if you cancel immediately.",
         ],
         "price_increase_no_notice": [
             "Prices can be changed at any time without informing you.",
             "Fees may increase without prior notification to users.",
-            "We can raise rates whenever we want without warning."
+            "We can raise rates whenever we want without warning.",
         ],
         "content_loss": [
             "We are not responsible if your data is deleted or lost.",
             "Content may be removed at any time without backup or recovery.",
-            "No obligation to preserve your files or information."
+            "No obligation to preserve your files or information.",
         ],
         "rights_waiver": [
             "You waive all legal rights and remedies against us.",
             "You give up your right to seek compensation or damages.",
-            "You surrender all statutory protections and consumer rights."
+            "You surrender all statutory protections and consumer rights.",
         ],
         "unilateral_changes": [
             "Terms can be modified at any time without notifying users.",
             "We may change this agreement whenever we want without warning.",
-            "Updates to terms are effective immediately without your consent."
+            "Updates to terms are effective immediately without your consent.",
         ],
         "data_sharing": [
             "Your personal information may be sold to third parties.",
             "We can share your data with advertisers and partners.",
-            "Information will be transferred to affiliates without restriction."
+            "Information will be transferred to affiliates without restriction.",
         ],
         "broad_liability_disclaimer": [
             "No warranty of any kind - use entirely at your own risk.",
             "We are not liable for any damages whatsoever.",
-            "Service provided as-is with no guarantees or protections."
+            "Service provided as-is with no guarantees or protections.",
         ],
         "broad_usage_rights": [
             "We get unlimited, perpetual, irrevocable rights to your content.",
             "You grant us a worldwide license to use your work for any purpose.",
-            "We can sublicense and monetize your content without compensation."
-        ]
+            "We can sublicense and monetize your content without compensation.",
+        ],
     }
 
     # Similarity threshold for semantic matching
@@ -102,7 +102,9 @@ class SemanticRiskDetector:
 
         This should be called once at startup to avoid recomputing.
         """
-        logger.info("Initializing semantic risk detector - computing template embeddings...")
+        logger.info(
+            "Initializing semantic risk detector - computing template embeddings..."
+        )
 
         self.template_embeddings = {}
 
@@ -114,19 +116,21 @@ class SemanticRiskDetector:
                     embedding = await self.openai.create_embedding(template)
                     embeddings.append(embedding)
                 except Exception as e:
-                    logger.warning(f"Failed to generate embedding for template '{template[:50]}...': {e}")
+                    logger.warning(
+                        f"Failed to generate embedding for template '{template[:50]}...': {e}"
+                    )
                     continue
 
             self.template_embeddings[risk_type] = embeddings
             logger.debug(f"Generated {len(embeddings)} embeddings for {risk_type}")
 
         total_embeddings = sum(len(e) for e in self.template_embeddings.values())
-        logger.info(f"✓ Semantic risk detector initialized with {total_embeddings} template embeddings")
+        logger.info(
+            f"✓ Semantic risk detector initialized with {total_embeddings} template embeddings"
+        )
 
     async def detect_semantic_risks(
-        self,
-        clause_text: str,
-        clause_embedding: Optional[List[float]] = None
+        self, clause_text: str, clause_embedding: Optional[List[float]] = None
     ) -> List[Dict]:
         """
         Detect risky patterns using semantic similarity.
@@ -139,7 +143,9 @@ class SemanticRiskDetector:
             List of detected semantic risks with similarity scores
         """
         if not self.template_embeddings:
-            logger.warning("Template embeddings not initialized - call initialize() first")
+            logger.warning(
+                "Template embeddings not initialized - call initialize() first"
+            )
             return []
 
         # Get clause embedding
@@ -159,7 +165,9 @@ class SemanticRiskDetector:
 
             for idx, template_embedding in enumerate(template_embeddings):
                 # Compute cosine similarity
-                similarity = self._cosine_similarity(clause_embedding, template_embedding)
+                similarity = self._cosine_similarity(
+                    clause_embedding, template_embedding
+                )
 
                 if similarity > max_similarity:
                     max_similarity = similarity
@@ -167,14 +175,18 @@ class SemanticRiskDetector:
 
             # If similarity exceeds threshold, flag as semantic risk
             if max_similarity >= self.SIMILARITY_THRESHOLD:
-                detected_risks.append({
-                    "risk_type": risk_type,
-                    "similarity": max_similarity,
-                    "matched_template": self.RISKY_TEMPLATES[risk_type][best_match_idx],
-                    "detection_method": "semantic",
-                    "severity": self._determine_severity(risk_type),
-                    "description": self._get_risk_description(risk_type)
-                })
+                detected_risks.append(
+                    {
+                        "risk_type": risk_type,
+                        "similarity": max_similarity,
+                        "matched_template": self.RISKY_TEMPLATES[risk_type][
+                            best_match_idx
+                        ],
+                        "detection_method": "semantic",
+                        "severity": self._determine_severity(risk_type),
+                        "description": self._get_risk_description(risk_type),
+                    }
+                )
 
                 logger.info(
                     f"Semantic risk detected: {risk_type} "
@@ -225,7 +237,7 @@ class SemanticRiskDetector:
             "auto_payment_updates",
             "price_increase_no_notice",
             "content_loss",
-            "rights_waiver"
+            "rights_waiver",
         }
 
         if risk_type in high_severity:
@@ -255,7 +267,7 @@ class SemanticRiskDetector:
             "unilateral_changes": "Terms can change without notice",
             "data_sharing": "Your data may be shared or sold",
             "broad_liability_disclaimer": "Broad disclaimers limiting company liability",
-            "broad_usage_rights": "Company gets broad rights to your content"
+            "broad_usage_rights": "Company gets broad rights to your content",
         }
 
         return descriptions.get(risk_type, "Potential consumer risk detected")
@@ -264,7 +276,7 @@ class SemanticRiskDetector:
         self,
         clause_text: str,
         keyword_indicators: List[Dict],
-        clause_embedding: Optional[List[float]] = None
+        clause_embedding: Optional[List[float]] = None,
     ) -> List[Dict]:
         """
         Augment keyword-based indicators with semantic detection.
@@ -287,21 +299,22 @@ class SemanticRiskDetector:
         for risk in semantic_risks:
             # Check if this risk type was already detected by keywords
             already_detected = any(
-                ind.get("indicator") == risk["risk_type"]
-                for ind in keyword_indicators
+                ind.get("indicator") == risk["risk_type"] for ind in keyword_indicators
             )
 
             if not already_detected:
                 # Add as new indicator
-                semantic_indicators.append({
-                    "indicator": risk["risk_type"],
-                    "severity": risk["severity"],
-                    "description": risk["description"],
-                    "category": "semantic_risk",
-                    "detection_method": "semantic",
-                    "similarity": risk["similarity"],
-                    "matched_template": risk["matched_template"]
-                })
+                semantic_indicators.append(
+                    {
+                        "indicator": risk["risk_type"],
+                        "severity": risk["severity"],
+                        "description": risk["description"],
+                        "category": "semantic_risk",
+                        "detection_method": "semantic",
+                        "similarity": risk["similarity"],
+                        "matched_template": risk["matched_template"],
+                    }
+                )
 
         # Combine and return
         all_indicators = keyword_indicators + semantic_indicators

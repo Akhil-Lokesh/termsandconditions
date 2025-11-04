@@ -24,12 +24,18 @@ class Anomaly(Base):
     recommendation = Column(Text, nullable=True)  # What users should know
     risk_category = Column(String, nullable=True)  # liability, payment, privacy, etc.
     prevalence = Column(Float, nullable=True)  # 0.0-1.0
-    detected_indicators = Column(JSON, nullable=True)  # List of detected risk indicators
-    risk_flags = Column(JSON, nullable=True)  # Legacy field - now using detected_indicators
+    detected_indicators = Column(
+        JSON, nullable=True
+    )  # List of detected risk indicators
+    risk_flags = Column(
+        JSON, nullable=True
+    )  # Legacy field - now using detected_indicators
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     # Relationships
     document = relationship("Document", back_populates="anomalies")
 
     def __repr__(self) -> str:
-        return f"<Anomaly(id={self.id}, severity={self.severity}, section={self.section})>"
+        return (
+            f"<Anomaly(id={self.id}, severity={self.severity}, section={self.section})>"
+        )

@@ -58,10 +58,7 @@ class GPT5Stage1Classifier:
         logger.info(f"Initialized GPT5Stage1Classifier with model: {self.model_name}")
 
     async def classify_document(
-        self,
-        document_text: str,
-        document_id: str,
-        company_name: str = "Unknown"
+        self, document_text: str, document_id: str, company_name: str = "Unknown"
     ) -> Dict[str, Any]:
         """
         Fast classification of T&C document.
@@ -95,7 +92,9 @@ class GPT5Stage1Classifier:
             raise ValueError("Document text is too short or empty")
 
         logger.info(f"Starting Stage 1 classification for document {document_id}")
-        logger.info(f"Document length: {len(document_text)} chars, Company: {company_name}")
+        logger.info(
+            f"Document length: {len(document_text)} chars, Company: {company_name}"
+        )
 
         # Build classification prompt
         prompt = self._build_classification_prompt(document_text, company_name)
@@ -106,7 +105,7 @@ class GPT5Stage1Classifier:
             response = await self.openai.create_structured_completion(
                 prompt=prompt,
                 model=self.model_name,
-                temperature=0.0  # Will be ignored for reasoning models by OpenAI service
+                temperature=0.0,  # Will be ignored for reasoning models by OpenAI service
             )
 
             # Parse JSON response
@@ -151,9 +150,7 @@ class GPT5Stage1Classifier:
             raise
 
     def _build_classification_prompt(
-        self,
-        document_text: str,
-        company_name: str
+        self, document_text: str, company_name: str
     ) -> str:
         """
         Build the classification prompt for GPT-5-Nano.
@@ -163,7 +160,10 @@ class GPT5Stage1Classifier:
         # Truncate document if too long (Stage 1 is meant to be fast)
         max_chars = 15000  # ~4000 tokens
         if len(document_text) > max_chars:
-            document_text = document_text[:max_chars] + "\n\n[Document truncated for Stage 1 analysis]"
+            document_text = (
+                document_text[:max_chars]
+                + "\n\n[Document truncated for Stage 1 analysis]"
+            )
             logger.debug(f"Truncated document to {max_chars} chars for Stage 1")
 
         prompt = f"""You are a T&C analyst specializing in rapid document classification for Terms & Conditions documents.
@@ -252,7 +252,9 @@ JSON Response:"""
                 raise ValueError("Confidence must be numeric")
 
             if result["confidence"] < 0.0 or result["confidence"] > 1.0:
-                logger.warning(f"Confidence {result['confidence']} out of range, clamping to 0-1")
+                logger.warning(
+                    f"Confidence {result['confidence']} out of range, clamping to 0-1"
+                )
                 result["confidence"] = max(0.0, min(1.0, result["confidence"]))
 
             if result["overall_risk"] not in ["low", "medium", "high"]:
@@ -261,7 +263,9 @@ JSON Response:"""
             if not isinstance(result["clauses"], list):
                 raise ValueError("Clauses must be a list")
 
-            logger.debug(f"Parsed {len(result['clauses'])} clauses from Stage 1 response")
+            logger.debug(
+                f"Parsed {len(result['clauses'])} clauses from Stage 1 response"
+            )
 
             return result
 
@@ -270,10 +274,7 @@ JSON Response:"""
             raise
 
     def _fallback_parse(
-        self,
-        response: str,
-        document_id: str,
-        start_time: float
+        self, response: str, document_id: str, start_time: float
     ) -> Dict[str, Any]:
         """
         Fallback parsing when JSON parsing fails.
@@ -303,7 +304,7 @@ JSON Response:"""
             "stage": 1,
             "document_id": document_id,
             "timestamp": datetime.utcnow().isoformat(),
-            "parsing_error": True
+            "parsing_error": True,
         }
 
         logger.warning(f"Fallback result: {fallback_result}")
@@ -332,9 +333,7 @@ JSON Response:"""
         return round(total_cost, 6)
 
     async def classify_batch(
-        self,
-        documents: List[Dict[str, str]],
-        batch_id: str = None
+        self, documents: List[Dict[str, str]], batch_id: str = None
     ) -> List[Dict[str, Any]]:
         """
         Classify multiple documents in batch.
@@ -349,7 +348,9 @@ JSON Response:"""
             List of classification results
         """
         batch_id = batch_id or f"batch_{int(time.time())}"
-        logger.info(f"Starting batch classification: {batch_id} ({len(documents)} documents)")
+        logger.info(
+            f"Starting batch classification: {batch_id} ({len(documents)} documents)"
+        )
 
         results = []
         total_cost = 0.0
@@ -360,7 +361,7 @@ JSON Response:"""
                 result = await self.classify_document(
                     document_text=doc["text"],
                     document_id=doc["id"],
-                    company_name=doc.get("company", "Unknown")
+                    company_name=doc.get("company", "Unknown"),
                 )
 
                 results.append(result)
@@ -374,12 +375,14 @@ JSON Response:"""
             except Exception as e:
                 logger.error(f"Failed to classify document {doc['id']}: {e}")
                 # Continue with next document
-                results.append({
-                    "document_id": doc["id"],
-                    "error": str(e),
-                    "requires_escalation": True,
-                    "stage": 1
-                })
+                results.append(
+                    {
+                        "document_id": doc["id"],
+                        "error": str(e),
+                        "requires_escalation": True,
+                        "stage": 1,
+                    }
+                )
 
         escalation_rate = (escalation_count / len(documents)) * 100 if documents else 0
 

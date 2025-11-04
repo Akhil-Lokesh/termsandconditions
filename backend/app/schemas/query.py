@@ -8,12 +8,14 @@ from pydantic import BaseModel
 
 class QueryRequest(BaseModel):
     """Query request schema."""
+
     document_id: str
     question: str
 
 
 class Citation(BaseModel):
     """Citation schema for query responses."""
+
     clause_id: str
     section: str
     text: str
@@ -22,6 +24,7 @@ class Citation(BaseModel):
 
 class QueryResponse(BaseModel):
     """Query response schema."""
+
     question: str
     answer: str
     citations: List[Citation] = []
