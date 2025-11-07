@@ -7,6 +7,7 @@ Identifies clauses that would surprise or harm the average consumer.
 
 import json
 from typing import Dict, Any, List, Optional
+from sqlalchemy.orm import Session
 
 from app.services.openai_service import OpenAIService
 from app.services.gpt5_service import GPT5Service
@@ -19,7 +20,10 @@ class RiskAssessor:
     """Assesses risk level of clauses using GPT-5-Nano (with GPT-4o-mini fallback) as a consumer protection tool."""
 
     def __init__(
-        self, openai_service: Optional[OpenAIService] = None, use_gpt5: bool = True
+        self,
+        openai_service: Optional[OpenAIService] = None,
+        use_gpt5: bool = True,
+        db: Optional[Session] = None,
     ):
         """
         Initialize risk assessor.
@@ -27,10 +31,12 @@ class RiskAssessor:
         Args:
             openai_service: Optional OpenAI service instance
             use_gpt5: If True, try GPT-5-Nano first (fallback to GPT-4o-mini on error)
+            db: Optional database session for potential future use
         """
         self.openai = openai_service or OpenAIService()
         self.use_gpt5 = use_gpt5
         self.gpt5_service = None
+        self.db = db  # Store for potential future use
 
         # Initialize GPT-5 service if requested
         if use_gpt5:

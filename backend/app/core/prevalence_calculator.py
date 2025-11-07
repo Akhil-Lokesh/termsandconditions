@@ -6,6 +6,7 @@ of 100+ standard Terms & Conditions documents.
 """
 
 from typing import Dict, Any, Optional
+from sqlalchemy.orm import Session
 
 from app.services.pinecone_service import PineconeService
 from app.services.openai_service import OpenAIService
@@ -22,6 +23,7 @@ class PrevalenceCalculator:
         self,
         openai_service: Optional[OpenAIService] = None,
         pinecone_service: Optional[PineconeService] = None,
+        db: Optional[Session] = None,
     ):
         """
         Initialize prevalence calculator.
@@ -29,9 +31,11 @@ class PrevalenceCalculator:
         Args:
             openai_service: Optional OpenAI service instance
             pinecone_service: Optional Pinecone service instance
+            db: Optional database session for future use
         """
         self.openai = openai_service or OpenAIService()
         self.pinecone = pinecone_service or PineconeService()
+        self.db = db  # Store for potential future use
 
     async def calculate_prevalence(
         self,

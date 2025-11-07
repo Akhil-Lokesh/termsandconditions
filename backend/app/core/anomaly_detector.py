@@ -41,8 +41,8 @@ class AnomalyDetector:
         self.openai = openai_service or OpenAIService()
         self.pinecone = pinecone_service or PineconeService()
         self.db = db
-        self.prevalence_calc = PrevalenceCalculator(self.openai, self.pinecone)
-        self.risk_assessor = RiskAssessor(self.openai)
+        self.prevalence_calc = PrevalenceCalculator(self.openai, self.pinecone, self.db)
+        self.risk_assessor = RiskAssessor(self.openai, use_gpt5=True, db=self.db)
         self.risk_indicators = RiskIndicators()
         self.semantic_detector = SemanticRiskDetector(self.openai)  # Fix #5
         self.compound_detector = CompoundRiskDetector()  # Fix #6
