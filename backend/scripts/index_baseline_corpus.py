@@ -124,7 +124,7 @@ class CorpusIndexer:
 
     async def index_document(
         self,
-        pdf_path: Path,
+        file_path: Path,
         metadata: Dict,
         force: bool = False
     ) -> Optional[Dict]:
@@ -132,15 +132,15 @@ class CorpusIndexer:
         Process and index a single T&C document.
 
         Args:
-            pdf_path: Path to PDF file
+            file_path: Path to PDF or TXT file
             metadata: Document metadata from collection
             force: Force re-indexing even if exists
 
         Returns:
             Processing stats dict if successful, None otherwise
         """
-        doc_id = f"baseline_{pdf_path.stem}"
-        company = metadata.get("company", pdf_path.stem)
+        doc_id = f"baseline_{file_path.stem}"
+        company = metadata.get("company", file_path.stem)
 
         start_time = time.time()
 
@@ -161,9 +161,15 @@ class CorpusIndexer:
 
             # Step 1: Extract text
             logger.info(f"   1/5 Extracting text...")
-            extracted = await self.processor.extract_text(str(pdf_path))
-            text = extracted["text"]
-            page_count = extracted["page_count"]
+            if file_path.suffix == ".txt":
+                # Read text file directly
+                text = file_path.read_text(encoding="utf-8")
+                page_count = 1  # Text files don't have pages
+            else:
+                # Extract from PDF
+                extracted = await self.processor.extract_text(str(file_path))
+                text = extracted["text"]
+                page_count = extracted["page_count"]
 
             if len(text) < 500:
                 logger.warning(f"   ⚠️  Text too short ({len(text)} chars), skipping")
@@ -272,17 +278,18 @@ class CorpusIndexer:
             logger.warning("⚠️  metadata.json not found, proceeding without metadata")
             metadata_map = {}
 
-        # Get all PDF files
+        # Get all PDF and TXT files
         if categories:
-            pdf_files = []
+            doc_files = []
             for category in categories:
                 category_dir = corpus_dir / category
                 if category_dir.exists():
-                    pdf_files.extend(list(category_dir.glob("*.pdf")))
+                    doc_files.extend(list(category_dir.glob("*.pdf")))
+                    doc_files.extend(list(category_dir.glob("*.txt")))
         else:
-            pdf_files = list(corpus_dir.rglob("*.pdf"))
+            doc_files = list(corpus_dir.rglob("*.pdf")) + list(corpus_dir.rglob("*.txt"))
 
-        total_files = len(pdf_files)
+        total_files = len(doc_files)
         logger.info(f"{'='*60}")
         logger.info(f"📚 INDEXING BASELINE CORPUS")
         logger.info(f"{'='*60}")
@@ -293,14 +300,14 @@ class CorpusIndexer:
 
         # Process each document
         results = []
-        for idx, pdf_path in enumerate(pdf_files, 1):
-            logger.info(f"\n[{idx}/{total_files}] {pdf_path.name}")
+        for idx, doc_path in enumerate(doc_files, 1):
+            logger.info(f"\n[{idx}/{total_files}] {doc_path.name}")
 
             # Get metadata
-            metadata = metadata_map.get(pdf_path.name, {})
+            metadata = metadata_map.get(doc_path.name, {})
 
             # Index document
-            result = await self.index_document(pdf_path, metadata, force)
+            result = await self.index_document(doc_path, metadata, force)
             if result:
                 results.append(result)
 
