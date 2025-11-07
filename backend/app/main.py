@@ -27,52 +27,68 @@ async def lifespan(app: FastAPI):
     """
     Lifespan context manager for startup and shutdown events.
 
-    Startup:
-        - Initialize external services (Pinecone, Redis)
-        - Verify database connection
-        - Load configuration
+    FAIL-FAST STRATEGY:
+        - Redis (optional): Continues with warning if unavailable
+        - Pinecone (required): Fails startup if unavailable
+        - OpenAI (required): Fails startup if unavailable
 
-    Shutdown:
-        - Close connections
-        - Cleanup resources
+    This prevents silent failures that cause crashes in endpoints.
     """
     logger.info("Starting up T&C Analysis API...")
 
-    # Initialize Redis cache service
+    # Track initialization failures
+    init_failures = []
+
+    # Initialize Redis cache service (OPTIONAL - can run without)
     try:
         app.state.cache = CacheService()
         await app.state.cache.connect()
         logger.info("✓ Redis cache connected")
     except Exception as e:
-        logger.error(f"✗ Redis connection failed: {e}")
+        logger.warning(f"✗ Redis connection failed: {e}")
         logger.warning("Continuing without cache (degraded performance)")
         app.state.cache = None
 
-    # Initialize Pinecone service
+    # Initialize Pinecone service (REQUIRED)
     try:
         app.state.pinecone = PineconeService()
         await app.state.pinecone.initialize()
         logger.info("✓ Pinecone initialized")
     except Exception as e:
         logger.error(f"✗ Pinecone initialization failed: {e}")
+        init_failures.append(f"Pinecone: {e}")
         app.state.pinecone = None
 
-    # Initialize OpenAI service (with cache if available)
+    # Initialize OpenAI service (REQUIRED)
     try:
         app.state.openai = OpenAIService(cache_service=app.state.cache)
-        logger.info("✓ OpenAI service initialized")
+        # Test with a simple embedding to verify API key works
+        test_embedding = await app.state.openai.create_embedding("test")
+        logger.info("✓ OpenAI service initialized and tested")
     except Exception as e:
         logger.error(f"✗ OpenAI initialization failed: {e}")
+        init_failures.append(f"OpenAI: {e}")
         app.state.openai = None
 
-    logger.info("Startup complete!")
+    # FAIL FAST if required services failed
+    if init_failures:
+        error_msg = "Critical services failed to initialize:\n" + "\n".join(
+            f"  - {err}" for err in init_failures
+        )
+        logger.error(error_msg)
+        logger.error("API cannot start. Fix configuration and restart.")
+        logger.error(
+            "Check: 1) API keys in .env, 2) Network connectivity, 3) Service status"
+        )
+        raise RuntimeError(error_msg)
+
+    logger.info("✓ All services initialized successfully!")
 
     yield
 
     # Shutdown
     logger.info("Shutting down...")
 
-    # Close service connections
     if app.state.cache:
         await app.state.cache.disconnect()
         logger.info("✓ Redis disconnected")
@@ -109,11 +125,11 @@ app.add_middleware(
 )
 
 
-# Health check endpoint
+# Health check endpoints
 @app.get("/health")
 async def health_check():
     """
-    Health check endpoint.
+    Basic health check endpoint.
 
     Returns:
         dict: Status and version information
@@ -122,6 +138,51 @@ async def health_check():
         "status": "healthy",
         "version": "1.0.0",
         "environment": settings.ENVIRONMENT,
+    }
+
+
+@app.get("/health/services")
+async def health_check_services():
+    """
+    Detailed health check for all services.
+
+    Returns service availability status. Use this to verify:
+    - API is accepting requests
+    - Required services (OpenAI, Pinecone) are operational
+    - Optional services (Redis cache) are available
+
+    Returns:
+        dict: Service health status and availability
+    """
+    from fastapi import Request
+
+    # Note: app.state is available via request context in route handlers
+    # Using app directly since we're in the same module
+    services = {
+        "openai": app.state.openai is not None,
+        "pinecone": app.state.pinecone is not None,
+        "cache": app.state.cache is not None,
+    }
+
+    all_required_healthy = services["openai"] and services["pinecone"]
+
+    return {
+        "status": "healthy" if all_required_healthy else "degraded",
+        "services": services,
+        "message": (
+            "All required services operational"
+            if all_required_healthy
+            else "Some required services unavailable"
+        ),
+        "details": {
+            "openai": "✓ Connected" if services["openai"] else "✗ Unavailable",
+            "pinecone": "✓ Connected" if services["pinecone"] else "✗ Unavailable",
+            "cache": (
+                "✓ Connected"
+                if services["cache"]
+                else "○ Optional (running without cache)"
+            ),
+        },
     }
 
 
