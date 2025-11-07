@@ -159,6 +159,30 @@ async def upload_document(
             )
 
         # ============================================================
+        # STEP 2.5: Save clauses to database
+        # ============================================================
+        logger.info(f"Saving {num_clauses} clauses to database...")
+
+        for section in sections:
+            section_name = section.get("title", "Unknown Section")
+            section_number = section.get("number", "0")
+
+            for clause in section.get("clauses", []):
+                clause_record = Clause(
+                    id=str(uuid.uuid4()),
+                    document_id=doc_id,
+                    section=section_name,
+                    section_number=section_number,
+                    clause_number=clause.get("id", ""),
+                    text=clause.get("text", ""),
+                )
+                db.add(clause_record)
+
+        # Commit clauses
+        db.commit()
+        logger.info(f"✓ Saved {num_clauses} clauses to database")
+
+        # ============================================================
         # STEP 3: Create semantic chunks
         # ============================================================
         chunker = LegalChunker()
