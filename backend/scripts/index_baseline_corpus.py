@@ -188,6 +188,11 @@ class CorpusIndexer:
             num_clauses = structure.get("num_clauses", 0)
             logger.info(f"       Found {len(sections)} sections, {num_clauses} clauses")
 
+            # Debug: Check section structure
+            if sections and len(sections) > 0:
+                logger.debug(f"       First section type: {type(sections[0])}")
+                logger.debug(f"       First section keys: {sections[0].keys() if isinstance(sections[0], dict) else 'NOT A DICT'}")
+
             # Step 3: Create chunks
             logger.info(f"   3/5 Creating chunks...")
             chunks = await self.chunker.create_chunks(sections)
