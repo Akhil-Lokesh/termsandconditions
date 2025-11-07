@@ -1,0 +1,452 @@
+[
+  {
+    "document_id": "baseline_nintendo_tos",
+    "company": "nintendo_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 1,
+    "chunk_count": 7,
+    "text_length": 18727,
+    "processing_time": 3.067112922668457
+  },
+  {
+    "document_id": "baseline_store_tos",
+    "company": "store_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 42,
+    "chunk_count": 43,
+    "text_length": 49949,
+    "processing_time": 3.285728931427002
+  },
+  {
+    "document_id": "baseline_ea_tos",
+    "company": "ea_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 35,
+    "chunk_count": 37,
+    "text_length": 46915,
+    "processing_time": 3.400536060333252
+  },
+  {
+    "document_id": "baseline_playstation_tos",
+    "company": "playstation_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 1,
+    "chunk_count": 5,
+    "text_length": 13754,
+    "processing_time": 1.162667989730835
+  },
+  {
+    "document_id": "baseline_walmart_tos",
+    "company": "walmart_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 1,
+    "chunk_count": 31,
+    "text_length": 88617,
+    "processing_time": 2.996429204940796
+  },
+  {
+    "document_id": "baseline_shopify_tos",
+    "company": "shopify_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 32,
+    "chunk_count": 43,
+    "text_length": 83205,
+    "processing_time": 3.604979991912842
+  },
+  {
+    "document_id": "baseline_target_tos",
+    "company": "target_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 1,
+    "chunk_count": 57,
+    "text_length": 157172,
+    "processing_time": 4.797021865844727
+  },
+  {
+    "document_id": "baseline_help_tos",
+    "company": "help_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 1,
+    "chunk_count": 7,
+    "text_length": 17872,
+    "processing_time": 1.5100302696228027
+  },
+  {
+    "document_id": "baseline_apple_tos",
+    "company": "apple_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 1,
+    "chunk_count": 19,
+    "text_length": 52808,
+    "processing_time": 1.6208338737487793
+  },
+  {
+    "document_id": "baseline_youtube_tos",
+    "company": "youtube_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 1,
+    "chunk_count": 9,
+    "text_length": 24879,
+    "processing_time": 1.8316988945007324
+  },
+  {
+    "document_id": "baseline_hbomax_tos",
+    "company": "hbomax_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 1,
+    "chunk_count": 1,
+    "text_length": 1766,
+    "processing_time": 1.32905912399292
+  },
+  {
+    "document_id": "baseline_pandora_tos",
+    "company": "pandora_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 36,
+    "chunk_count": 38,
+    "text_length": 39641,
+    "processing_time": 2.672790050506592
+  },
+  {
+    "document_id": "baseline_spotify_tos",
+    "company": "spotify_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 7,
+    "chunk_count": 21,
+    "text_length": 54167,
+    "processing_time": 3.141016721725464
+  },
+  {
+    "document_id": "baseline_linkedin_tos",
+    "company": "linkedin_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 10,
+    "chunk_count": 14,
+    "text_length": 32711,
+    "processing_time": 1.7172112464904785
+  },
+  {
+    "document_id": "baseline_tiktok_tos",
+    "company": "tiktok_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 1,
+    "chunk_count": 11,
+    "text_length": 28214,
+    "processing_time": 1.4940881729125977
+  },
+  {
+    "document_id": "baseline_pinterest_tos",
+    "company": "pinterest_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 1,
+    "chunk_count": 11,
+    "text_length": 29421,
+    "processing_time": 1.5565869808197021
+  },
+  {
+    "document_id": "baseline_twitter_tos",
+    "company": "twitter_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 24,
+    "chunk_count": 35,
+    "text_length": 51619,
+    "processing_time": 2.966176986694336
+  },
+  {
+    "document_id": "baseline_reddit_tos",
+    "company": "reddit_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 1,
+    "chunk_count": 1,
+    "text_length": 736,
+    "processing_time": 1.6492159366607666
+  },
+  {
+    "document_id": "baseline_discord_tos",
+    "company": "discord_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 1,
+    "chunk_count": 21,
+    "text_length": 59322,
+    "processing_time": 2.004491090774536
+  },
+  {
+    "document_id": "baseline_digitalocean_tos",
+    "company": "digitalocean_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 69,
+    "chunk_count": 73,
+    "text_length": 64232,
+    "processing_time": 3.4210970401763916
+  },
+  {
+    "document_id": "baseline_cloud_tos",
+    "company": "cloud_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 69,
+    "chunk_count": 73,
+    "text_length": 56010,
+    "processing_time": 3.4281139373779297
+  },
+  {
+    "document_id": "baseline_azure_tos",
+    "company": "azure_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 1,
+    "chunk_count": 2,
+    "text_length": 4131,
+    "processing_time": 1.2344160079956055
+  },
+  {
+    "document_id": "baseline_aws_tos",
+    "company": "aws_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 46,
+    "chunk_count": 54,
+    "text_length": 58679,
+    "processing_time": 2.930722713470459
+  },
+  {
+    "document_id": "baseline_instacart_tos",
+    "company": "instacart_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 1,
+    "chunk_count": 24,
+    "text_length": 69652,
+    "processing_time": 3.413633108139038
+  },
+  {
+    "document_id": "baseline_grubhub_tos",
+    "company": "grubhub_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 1,
+    "chunk_count": 27,
+    "text_length": 79750,
+    "processing_time": 2.8321149349212646
+  },
+  {
+    "document_id": "baseline_squareup_tos",
+    "company": "squareup_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 31,
+    "chunk_count": 37,
+    "text_length": 60105,
+    "processing_time": 3.32414174079895
+  },
+  {
+    "document_id": "baseline_paypal_tos",
+    "company": "paypal_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 1,
+    "chunk_count": 57,
+    "text_length": 157661,
+    "processing_time": 3.5027410984039307
+  },
+  {
+    "document_id": "baseline_wise_tos",
+    "company": "wise_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 9,
+    "chunk_count": 28,
+    "text_length": 84970,
+    "processing_time": 3.186418294906616
+  },
+  {
+    "document_id": "baseline_stripe_tos",
+    "company": "stripe_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 1,
+    "chunk_count": 38,
+    "text_length": 105517,
+    "processing_time": 2.4156441688537598
+  },
+  {
+    "document_id": "baseline_zoom_tos",
+    "company": "zoom_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 97,
+    "chunk_count": 101,
+    "text_length": 87200,
+    "processing_time": 5.101705074310303
+  },
+  {
+    "document_id": "baseline_salesforce_tos",
+    "company": "salesforce_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 1,
+    "chunk_count": 1,
+    "text_length": 1940,
+    "processing_time": 0.979461669921875
+  },
+  {
+    "document_id": "baseline_trello_tos",
+    "company": "trello_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 21,
+    "chunk_count": 25,
+    "text_length": 45619,
+    "processing_time": 1.8771231174468994
+  },
+  {
+    "document_id": "baseline_support_tos",
+    "company": "support_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 3,
+    "chunk_count": 3,
+    "text_length": 6349,
+    "processing_time": 1.1459081172943115
+  },
+  {
+    "document_id": "baseline_atlassian_tos",
+    "company": "atlassian_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 21,
+    "chunk_count": 25,
+    "text_length": 45619,
+    "processing_time": 2.13405179977417
+  },
+  {
+    "document_id": "baseline_monday_tos",
+    "company": "monday_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 1,
+    "chunk_count": 2,
+    "text_length": 3406,
+    "processing_time": 1.6304090023040771
+  },
+  {
+    "document_id": "baseline_microsoft_tos",
+    "company": "microsoft_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 8,
+    "chunk_count": 40,
+    "text_length": 115687,
+    "processing_time": 2.73396372795105
+  },
+  {
+    "document_id": "baseline_dropbox_tos",
+    "company": "dropbox_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 1,
+    "chunk_count": 10,
+    "text_length": 25243,
+    "processing_time": 2.4558956623077393
+  },
+  {
+    "document_id": "baseline_asana_tos",
+    "company": "asana_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 1,
+    "chunk_count": 9,
+    "text_length": 26358,
+    "processing_time": 1.5716509819030762
+  },
+  {
+    "document_id": "baseline_slack_tos",
+    "company": "slack_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 1,
+    "chunk_count": 1,
+    "text_length": 1325,
+    "processing_time": 1.0620081424713135
+  },
+  {
+    "document_id": "baseline_booking_tos",
+    "company": "booking_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 1,
+    "chunk_count": 75,
+    "text_length": 179613,
+    "processing_time": 5.75967001914978
+  },
+  {
+    "document_id": "baseline_airbnb_tos",
+    "company": "airbnb_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 303,
+    "chunk_count": 313,
+    "text_length": 242648,
+    "processing_time": 18.759769916534424
+  },
+  {
+    "document_id": "baseline_lyft_tos",
+    "company": "lyft_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 10,
+    "chunk_count": 14,
+    "text_length": 121695,
+    "processing_time": 2.819521188735962
+  },
+  {
+    "document_id": "baseline_evernote_tos",
+    "company": "evernote_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 1,
+    "chunk_count": 21,
+    "text_length": 58223,
+    "processing_time": 2.5217740535736084
+  },
+  {
+    "document_id": "baseline_1password_tos",
+    "company": "1password_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 2,
+    "chunk_count": 10,
+    "text_length": 50783,
+    "processing_time": 2.2666311264038086
+  },
+  {
+    "document_id": "baseline_lastpass_tos",
+    "company": "lastpass_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 9,
+    "chunk_count": 14,
+    "text_length": 28638,
+    "processing_time": 1.509105920791626
+  }
+]

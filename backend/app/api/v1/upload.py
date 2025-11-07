@@ -48,6 +48,112 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+# ============================================================================
+# BACKGROUND TASK: Anomaly Detection
+# ============================================================================
+
+
+async def run_anomaly_detection_background(
+    document_id: str,
+    sections: list,
+    metadata: dict,
+    openai_service: OpenAIService,
+    pinecone_service: PineconeService,
+    db: Session,
+):
+    """
+    Run anomaly detection in background after document upload completes.
+
+    This task:
+    1. Detects anomalies by comparing clauses to baseline corpus
+    2. Generates risk assessment report
+    3. Saves anomalies to database
+    4. Updates document processing status
+
+    Args:
+        document_id: Document ID
+        sections: Parsed document sections with clauses
+        metadata: Document metadata (company name, etc.)
+        openai_service: OpenAI service instance
+        pinecone_service: Pinecone service instance
+        db: Database session
+    """
+    try:
+        logger.info(f"Starting background anomaly detection for {document_id}...")
+
+        # Extract company name from metadata
+        company_name = metadata.get("company", "Unknown")
+
+        # Detect anomalies
+        detector = AnomalyDetector(openai_service, pinecone_service, db)
+        anomalies = await detector.detect_anomalies(
+            document_id=document_id,
+            sections=sections,
+            company_name=company_name,
+            service_type="general",  # TODO: Auto-detect service type from metadata
+        )
+
+        logger.info(
+            f"Anomaly detection completed: {len(anomalies)} anomalies found"
+        )
+
+        # Generate risk assessment report
+        risk_report = await detector.generate_report(document_id, anomalies)
+
+        # Save anomalies to database
+        from app.models.anomaly import Anomaly
+
+        for anomaly_data in anomalies:
+            anomaly = Anomaly(
+                id=str(uuid.uuid4()),
+                document_id=document_id,
+                section=anomaly_data["section"],
+                clause_number=anomaly_data["clause_number"],
+                clause_text=anomaly_data["clause_text"],
+                severity=anomaly_data["severity"],
+                explanation=anomaly_data["explanation"],
+                consumer_impact=anomaly_data.get("consumer_impact", ""),
+                recommendation=anomaly_data.get("recommendation", ""),
+                risk_category=anomaly_data.get("risk_category", "other"),
+                prevalence=anomaly_data["prevalence"],
+                detected_indicators=anomaly_data.get("detected_indicators", []),
+            )
+            db.add(anomaly)
+
+        # Update document with risk assessment
+        document = db.query(Document).filter(Document.id == document_id).first()
+        if document:
+            document.anomaly_count = len(anomalies)
+            document.risk_score = risk_report["overall_risk"]["risk_score"]
+            document.risk_level = risk_report["overall_risk"]["risk_level"]
+            document.processing_status = "completed"
+            db.commit()
+
+            logger.info(
+                f"Background anomaly detection complete for {document_id}: "
+                f"{len(anomalies)} anomalies, "
+                f"Risk Score: {risk_report['overall_risk']['risk_score']}/10 "
+                f"({risk_report['overall_risk']['risk_level']})"
+            )
+        else:
+            logger.error(f"Document {document_id} not found when updating anomaly results")
+
+    except Exception as e:
+        logger.error(f"Background anomaly detection failed for {document_id}: {e}", exc_info=True)
+
+        # Update document status to failed
+        try:
+            document = db.query(Document).filter(Document.id == document_id).first()
+            if document:
+                document.processing_status = "anomaly_detection_failed"
+                document.anomaly_count = 0
+                document.risk_score = 0.0
+                document.risk_level = "Unknown"
+                db.commit()
+        except Exception as db_error:
+            logger.error(f"Failed to update document status after error: {db_error}")
+
+
 @router.post(
     "/",
     response_model=DocumentResponse,
@@ -72,6 +178,7 @@ router = APIRouter()
 )
 async def upload_document(
     request: Request,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(..., description="PDF file (max 10MB)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
@@ -245,75 +352,31 @@ async def upload_document(
         logger.info(f"Document saved to database: {doc_id}")
 
         # ============================================================
-        # STEP 8: Run anomaly detection
+        # STEP 8: Schedule anomaly detection in background
         # ============================================================
-        try:
-            logger.info("Starting anomaly detection...")
+        logger.info(f"Scheduling background anomaly detection for {doc_id}")
 
-            # Extract company name from metadata (if available)
-            company_name = metadata.get("company", "Unknown")
+        # Update document status to indicate background processing
+        document.processing_status = "analyzing_anomalies"
+        db.commit()
 
-            # Detect anomalies
-            detector = AnomalyDetector(openai_service, pinecone_service, db)
-            anomalies = await detector.detect_anomalies(
-                document_id=doc_id,
-                sections=sections,
-                company_name=company_name,
-                service_type="general",  # TODO: Auto-detect service type from metadata
-            )
+        # Schedule background task
+        background_tasks.add_task(
+            run_anomaly_detection_background,
+            document_id=doc_id,
+            sections=sections,
+            metadata=metadata,
+            openai_service=openai_service,
+            pinecone_service=pinecone_service,
+            db=db,
+        )
 
-            logger.info(
-                f"Anomaly detection completed: {len(anomalies)} anomalies found"
-            )
-
-            # Generate risk assessment report
-            risk_report = await detector.generate_report(doc_id, anomalies)
-
-            # Save anomalies to database
-            from app.models.anomaly import Anomaly
-
-            for anomaly_data in anomalies:
-                anomaly = Anomaly(
-                    id=str(uuid.uuid4()),
-                    document_id=doc_id,
-                    section=anomaly_data["section"],
-                    clause_number=anomaly_data["clause_number"],
-                    clause_text=anomaly_data["clause_text"],
-                    severity=anomaly_data["severity"],
-                    explanation=anomaly_data["explanation"],
-                    consumer_impact=anomaly_data.get("consumer_impact", ""),
-                    recommendation=anomaly_data.get("recommendation", ""),
-                    risk_category=anomaly_data.get("risk_category", "other"),
-                    prevalence=anomaly_data["prevalence"],
-                    detected_indicators=anomaly_data.get("detected_indicators", []),
-                )
-                db.add(anomaly)
-
-            # Update document with risk assessment
-            document.anomaly_count = len(anomalies)
-            document.risk_score = risk_report["overall_risk"]["risk_score"]
-            document.risk_level = risk_report["overall_risk"]["risk_level"]
-            document.processing_status = "completed"
-            db.commit()
-
-            logger.info(
-                f"Anomaly detection complete: {len(anomalies)} anomalies, "
-                f"Risk Score: {risk_report['overall_risk']['risk_score']}/10 "
-                f"({risk_report['overall_risk']['risk_level']})"
-            )
-
-        except Exception as e:
-            logger.error(f"Anomaly detection failed: {e}", exc_info=True)
-            document.processing_status = "anomaly_detection_failed"
-            document.anomaly_count = 0
-            document.risk_score = 0.0
-            document.risk_level = "Unknown"
-            db.commit()
+        logger.info(f"Background anomaly detection scheduled for {doc_id}")
 
         # ============================================================
-        # Success!
+        # Success! Upload complete, analysis running in background
         # ============================================================
-        logger.info(f"✓ Document processing complete: {doc_id}")
+        logger.info(f"✓ Document upload complete: {doc_id} (anomaly detection in background)")
 
         return DocumentResponse(
             id=doc_id,
@@ -321,8 +384,8 @@ async def upload_document(
             metadata=metadata,
             page_count=page_count,
             clause_count=num_clauses,
-            anomaly_count=document.anomaly_count,
-            processing_status=document.processing_status,
+            anomaly_count=0,  # Will be populated when background task completes
+            processing_status="analyzing_anomalies",
             created_at=document.created_at,
         )
 

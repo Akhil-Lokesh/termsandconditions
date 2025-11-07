@@ -1,0 +1,42 @@
+[
+  {
+    "document_id": "baseline_nintendo_tos",
+    "company": "nintendo_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 1,
+    "chunk_count": 7,
+    "text_length": 18727,
+    "processing_time": 3.1003730297088623
+  },
+  {
+    "document_id": "baseline_store_tos",
+    "company": "store_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 42,
+    "chunk_count": 43,
+    "text_length": 49949,
+    "processing_time": 1.513582706451416
+  },
+  {
+    "document_id": "baseline_ea_tos",
+    "company": "ea_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 35,
+    "chunk_count": 37,
+    "text_length": 46915,
+    "processing_time": 1.566122055053711
+  },
+  {
+    "document_id": "baseline_playstation_tos",
+    "company": "playstation_tos",
+    "status": "success",
+    "page_count": 1,
+    "clause_count": 1,
+    "chunk_count": 5,
+    "text_length": 13754,
+    "processing_time": 5.436174154281616
+  }
+]

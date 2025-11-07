@@ -1,0 +1,430 @@
+Legacy G Suite editions - Google Workspace Admin Help
+Skip to main content
+Legacy G Suite editionsYou can no longer sign up for G Suite Basic, G Suite Business, or the legacy free edition of G Suite. If you have a G Suite edition, you can continue with your subscription and all related services. However, you can’t switch to a different G Suite edition.
+Upgrade to Google Workspace
+By upgrading to Workspace, you unlock 24/7 support and access to premium collaboration and security features, based on the edition you choose. You can upgrade to any of these Business editions:
+Business Starter—Professional productivity suite with 30 GB pooled storage per user. Includes Gemini AI assistant in Gmail and access to Gemini app with with enterprise-grade data protections.
+Business Standard—Enhanced productivity suite with 2 TB pooled storage per user. Includes Gemini AI assistant in Gmail, Docs, Meet, and more, and access to Gemini app with with enterprise-grade data protections.
+Business Plus—Advanced productivity suite with 5 TB pooled storage per user. Includes Gemini AI assistant in Gmail, Docs, Meet, and more, and access to Gemini app with with enterprise-grade data protections.
+To learn more and sign up, go to Business editions.
+You can also upgrade to an Enterprise edition. For example, Enterprise Standard offers a complete suite of productivity and collaboration apps with flexible storage and enterprise-grade security and management. To switch to an Enterprise edition, contact Google Sales.
+Compare G Suite and Workspace editions
+Select your G Suite edition to compare key features with the Business editions and Enterprise Standard edition. For a full list of Business and Enterprise edition features, go to Compare Google Workspace editions.
+Expand section  |  Collapse all & go to top
+I have the legacy free edition of G Suite
+Usage and support
+G Suite
+Business Starter
+Business Standard
+Business Plus
+Enterprise Standard
+Number of users
+0
+1-300
+1-300
+1-300
+Any number
+Storage per user
+15 GB
+30 GB pooled*
+2 TB pooled*
+5 TB pooled*
+5 TB per user*
+24/7 support
+Standard
+Standard
+Standard
+Enhanced
+* Learn more about Google Workspace storage.
+Communication
+G Suite
+Business Starter
+Business Standard
+Business Plus
+Enterprise Standard
+Gmail
+Custom email address
+✔
+✔
+✔
+✔
+✔
+Google Meet
+Meeting length limit
+24 hours
+24 hours
+24 hours
+24 hours
+24 hours
+Participant limit
+100
+100
+150
+500
+500
+Hand raising
+✔
+✔
+✔
+✔
+Record meetings & save them to Google Drive
+✔
+✔
+✔
+Noise cancellation
+✔
+✔
+✔
+Polls
+✔
+✔
+✔
+Q&A
+✔
+✔
+✔
+Breakout rooms
+✔
+✔
+✔
+Attendance reporting
+✔
+✔
+Live stream meetings
+✔
+Collaboration
+G Suite
+Business Starter
+Business Standard
+Business Plus
+Enterprise Standard
+Drive and Google Docs editors
+Content creation (Docs, Sheets, Slides, Forms, Sites)
+✔
+✔
+✔
+✔
+✔
+Organizational branding (custom Drive templates)
+✔
+✔
+✔
+✔
+Shared drives membership, creation, and external moves
+✔
+✔
+✔
+✔
+Google Chat
+Turn external spaces on or off
+✔
+✔
+✔
+✔
+Control file sharing
+✔
+✔
+Google Calendar
+Calendar basics (such as sharing, video conferencing, resource booking)
+✔
+✔
+✔
+✔
+✔
+Automatic room release
+✔
+Default event duration
+✔
+Security and administration
+G Suite
+Business Starter
+Business Standard
+Business Plus
+Enterprise Standard
+Fundamental endpoint management
+✔
+✔
+✔
+✔
+✔
+Collaboration with trusted external domains
+✔
+✔
+✔
+✔
+Google Vault
+✔
+✔
+Gmail data loss prevention (DLP)
+✔
+I have G Suite Basic
+Core services and usage
+G Suite Basic
+Business Starter
+Business Standard
+Business Plus
+Enterprise Standard
+Storage for each user
+30 GB
+30 GB pooled*
+2 TB pooled*
+5 TB pooled*
+5 TB per user*
+Number of users
+Unlimited
+1-300
+1-300
+1-300
+Any number
+Google Cloud Search
+✔
+✔
+✔
+Vault
+✔
+✔
+Resource booking
+✔
+✔
+✔
+✔
+* Learn more about Google Workspace storage.
+Security and controls
+G Suite Basic
+Business Starter
+Business Standard
+Business Plus
+Enterprise Standard
+Alert Center
+✔
+✔
+✔
+✔
+✔
+Fundamental data regions
+✔
+✔
+✔
+Drive
+G Suite Basic
+Business Starter
+Business Standard
+Business Plus
+Enterprise Standard
+Organizational branding (custom templates)
+✔
+✔
+✔
+✔
+Drive sharing permissions
+✔
+✔
+✔
+✔
+✔
+Advanced Drive logs and reports
+✔
+✔
+✔
+✔
+Shared drives membership, creation, and external moves
+✔
+✔
+✔
+✔
+Meet
+G Suite Basic
+Business Starter
+Business Standard
+Business Plus
+Enterprise Standard
+Maximum meeting length
+24 hours
+24 hours
+24 hours
+24 hours
+24 hours
+Maximum number of participants per meeting
+100
+100
+150
+500
+500
+Secure meetings
+✔
+✔
+✔
+✔
+✔
+Presentations and screen sharing
+✔
+✔
+✔
+✔
+✔
+External participants
+✔
+✔
+✔
+✔
+✔
+Dial in (U.S. & international numbers)
+✔
+✔
+✔
+✔
+✔
+App for Android and iOS
+✔
+✔
+✔
+✔
+✔
+I have G Suite Business
+Core services and usage
+G Suite Business
+Business Starter
+Business Standard
+Business Plus
+Enterprise Standard
+Storage for each user
+Unlimited
+30 GB pooled*
+2 TB pooled*
+5 TB pooled*
+5 TB per user*
+Number of users
+Unlimited
+1-300
+1-300
+1-300
+Any number
+Cloud Search
+✔
+✔
+✔
+✔
+Vault
+✔
+✔
+✔
+Resource booking
+✔
+✔
+✔
+✔
+✔
+* Learn more about Google Workspace storage.
+Security and controls
+G Suite Business
+Business Starter
+Business Standard
+Business Plus
+Enterprise Standard
+Alert Center
+✔
+✔
+✔
+✔
+✔
+Fundamental data regions
+✔
+✔
+✔
+✔
+Drive
+G Suite Business
+Business Starter
+Business Standard
+Business Plus
+Enterprise Standard
+Organizational branding (custom templates)
+✔
+✔
+✔
+✔
+Drive sharing permissions
+✔
+✔
+✔
+✔
+✔
+Advanced Drive logs and reports
+✔
+✔
+✔
+✔
+✔
+Shared drives membership, creation, and external moves
+✔
+✔
+✔
+✔
+✔
+Meet
+G Suite Business
+Business Starter
+Business Standard
+Business Plus
+Enterprise Standard
+Maximum meeting length
+24 hours
+24 hours
+24 hours
+24 hours
+24 hours
+Maximum number of participants per meeting
+150
+100
+150
+500
+500
+Secure meetings
+✔
+✔
+✔
+✔
+✔
+Presentations and screen sharing
+✔
+✔
+✔
+✔
+✔
+External participants
+✔
+✔
+✔
+✔
+✔
+Dial in (U.S. & international numbers)
+✔
+✔
+✔
+✔
+✔
+App for Android and iOS
+✔
+✔
+✔
+✔
+✔
+Was this helpful?How can we improve it?YesNoSubmit
+Need more help? Try these next steps:
+Post to the help community
+Get answers from community members
+Contact us Tell us more and we’ll help you get there
+true
+Start your free 14-day trial today Professional email, online storage, shared calendars, video meetings and more. Start your free Google Workspace trial today.
+SearchClear searchClose searchGoogle appsMain menu
+6312215839101686289
+true
+Search Help Center false
+true
+true
+true
+true true 73010
+false
+false
+false
+false
