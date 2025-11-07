@@ -183,12 +183,14 @@ class CorpusIndexer:
 
             # Step 2: Parse structure
             logger.info(f"   2/5 Parsing structure...")
-            clauses = await self.extractor.extract_structure(text)
-            logger.info(f"       Found {len(clauses)} clauses")
+            structure = await self.extractor.extract_structure(text)
+            sections = structure.get("sections", [])
+            num_clauses = structure.get("num_clauses", 0)
+            logger.info(f"       Found {len(sections)} sections, {num_clauses} clauses")
 
             # Step 3: Create chunks
             logger.info(f"   3/5 Creating chunks...")
-            chunks = await self.chunker.create_chunks(clauses)
+            chunks = await self.chunker.create_chunks(sections)
             logger.info(f"       Created {len(chunks)} chunks")
 
             # Step 4: Generate embeddings
@@ -233,7 +235,7 @@ class CorpusIndexer:
                 "company": company,
                 "status": "success",
                 "page_count": page_count,
-                "clause_count": len(clauses),
+                "clause_count": num_clauses,
                 "chunk_count": len(chunks),
                 "text_length": len(text),
                 "processing_time": processing_time
@@ -245,7 +247,7 @@ class CorpusIndexer:
             self.stats["errors"].append({
                 "document": company,
                 "error": str(e),
-                "path": str(pdf_path)
+                "path": str(file_path)
             })
             return None
 
