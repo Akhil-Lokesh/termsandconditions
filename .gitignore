@@ -42,10 +42,14 @@ venv.bak/
 *~
 .DS_Store
 
-# Environment Variables
+# Environment Variables (CRITICAL: Never commit API keys!)
 .env
 .env.local
 .env.*.local
+backend/.env
+frontend/.env.local
+**/.env
+**/.env.local
 
 # Database
 *.db
