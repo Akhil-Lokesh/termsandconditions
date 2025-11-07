@@ -72,12 +72,25 @@ docker-compose ps
 ### 5. Database Setup
 
 ```bash
-# Run migrations
-alembic upgrade head
+# Initialize database (recommended)
+python scripts/init_database.py
 
-# Verify database connection
-python -c "from app.db.session import engine; print('✓ Database connected')"
+# Or manually with Alembic:
+python -m alembic upgrade head
+
+# Check current migration status
+python -m alembic current
+
+# Optional: Reset database (destructive!)
+python scripts/init_database.py --reset
 ```
+
+**Database Helper Script**:
+- `scripts/init_database.py` - Automated database initialization
+- Checks database connection
+- Runs all migrations
+- Shows current migration status
+- Supports `--reset` flag to drop and recreate tables
 
 ### 6. Run Server
 
