@@ -184,7 +184,10 @@ async def upload_document(
         metadata_extractor = MetadataExtractor(openai_service)
         metadata = await metadata_extractor.extract_metadata(text)
 
-        logger.info(f"Metadata extracted: {metadata}")
+        logger.info(
+            f"Metadata extracted: Company={metadata.get('company_name', 'Unknown')}, "
+            f"Jurisdiction={metadata.get('jurisdiction', 'Unknown')}"
+        )
 
         # ============================================================
         # STEP 6: Store in Pinecone
