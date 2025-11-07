@@ -22,6 +22,7 @@ class APIClient {
   constructor() {
     this.client = axios.create({
       baseURL: API_BASE_URL,
+      timeout: 60000, // 60 second timeout
       headers: {
         'Content-Type': 'application/json',
       },
@@ -39,15 +40,64 @@ class APIClient {
       (error) => Promise.reject(error)
     );
 
-    // Response interceptor: Handle 401s
+    // Response interceptor: Handle errors with user-friendly messages
     this.client.interceptors.response.use(
       (response) => response,
       (error: AxiosError<APIError>) => {
-        if (error.response?.status === 401) {
-          this.clearToken();
-          window.location.href = '/login';
+        // User-friendly error messages
+        let message = 'An unexpected error occurred';
+
+        if (error.response) {
+          // Server responded with error
+          switch (error.response.status) {
+            case 400:
+              message = 'Invalid request. Please check your input.';
+              break;
+            case 401:
+              message = 'Please log in to continue.';
+              this.clearToken();
+              window.location.href = '/login';
+              break;
+            case 403:
+              message = 'You do not have permission to perform this action.';
+              break;
+            case 404:
+              message = 'The requested resource was not found.';
+              break;
+            case 413:
+              message = 'File is too large. Maximum size is 10MB.';
+              break;
+            case 422:
+              message = error.response.data?.detail || 'Validation error';
+              break;
+            case 429:
+              message = 'Too many requests. Please try again later.';
+              break;
+            case 500:
+              message = 'Server error. Please try again later.';
+              break;
+            case 503:
+              message = 'Service temporarily unavailable. Please try again in a few minutes.';
+              break;
+            default:
+              message = error.response.data?.detail || message;
+          }
+        } else if (error.request) {
+          // Request made but no response
+          message = 'Cannot connect to server. Please check your internet connection.';
+        } else {
+          // Error in request setup
+          message = error.message;
         }
-        return Promise.reject(error);
+
+        // Create friendly error object
+        const friendlyError = {
+          message,
+          status: error.response?.status,
+          originalError: error,
+        };
+
+        return Promise.reject(friendlyError);
       }
     );
   }
