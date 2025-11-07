@@ -149,12 +149,36 @@ class StructureExtractor:
                 )
 
         # Fallback: No clear section structure
-        if not sections or len(sections) < 3:
+        # Only fallback if BOTH conditions are met:
+        # 1. Few sections found (< 2)
+        # 2. Document is substantial (> 5000 chars)
+        should_fallback = (
+            (not sections or len(sections) < 2) and
+            len(text) > 5000  # Don't fragment short documents
+        )
+
+        if should_fallback:
             if self.debug:
-                logger.warning("No clear section structure, using paragraph fallback")
+                logger.warning(
+                    f"No clear section structure ({len(sections)} sections found), "
+                    f"using paragraph fallback"
+                )
 
             sections = await self._extract_paragraphs_as_sections(text)
             extraction_method = "paragraph"
+        elif not sections:
+            # Very short document or extraction totally failed
+            # Create single section with entire document
+            if self.debug:
+                logger.warning("No sections found, treating entire document as one section")
+
+            sections = [{
+                "number": "1",
+                "title": "Terms and Conditions",
+                "content": text,
+                "clauses": [],
+            }]
+            extraction_method = "single_section"
 
         # Extract clauses for each section
         total_clauses = 0
@@ -230,7 +254,7 @@ class StructureExtractor:
         """
         Fallback: Split text into paragraphs when no section pattern matches.
 
-        This ensures we still get multiple "clauses" even from poorly formatted documents.
+        Limits to 50 paragraphs maximum to prevent over-fragmentation.
 
         Args:
             text: Document text
@@ -243,6 +267,13 @@ class StructureExtractor:
 
         # Filter out very short paragraphs (< 50 chars)
         paragraphs = [p.strip() for p in paragraphs if len(p.strip()) >= 50]
+
+        # Limit to 50 paragraphs maximum
+        if len(paragraphs) > 50:
+            if self.debug:
+                logger.warning(f"Document has {len(paragraphs)} paragraphs, limiting to 50")
+            # Take first 50 (most important content usually at start)
+            paragraphs = paragraphs[:50]
 
         if self.debug:
             logger.info(f"Paragraph fallback: {len(paragraphs)} paragraphs found")
