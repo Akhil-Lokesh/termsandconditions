@@ -89,28 +89,14 @@ class DocumentWithAnomalies(DocumentResponse):
 
 
 class ComparisonRequest(BaseModel):
-    """Schema for document comparison request."""
+    """Request schema for comparing documents."""
 
-    document_ids: List[str] = Field(
-        ..., min_length=2, description="List of document IDs to compare"
-    )
-
-
-class DocumentComparison(BaseModel):
-    """Schema for a single document in comparison."""
-
-    document_id: str
-    filename: str
-    unique_clauses: int = 0
-    shared_clauses: int = 0
-    risk_score: Optional[float] = None
+    document_ids: List[str] = Field(..., min_length=2, max_length=5, description="List of document IDs to compare (2-5 documents)")
 
 
 class ComparisonResponse(BaseModel):
-    """Schema for document comparison response."""
+    """Response schema for document comparison."""
 
-    documents: List[DocumentComparison]
-    total_documents: int
-    common_clauses: List[str] = []
-    differences: List[Dict[str, Any]] = []
-    comparison_summary: Optional[str] = None
+    documents: List[Dict[str, Any]] = Field(..., description="Summary of each document")
+    differences: List[Dict[str, Any]] = Field(..., description="Key differences between documents")
+    recommendations: str = Field(..., description="Recommendation on which document is best/worst")
