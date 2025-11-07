@@ -37,6 +37,8 @@ router = APIRouter()
     description="""
     Ask a question about a T&C document and receive an AI-generated answer with citations.
 
+    **Rate Limit:** 100 queries per hour per IP address.
+
     **Pipeline:**
     1. Generate embedding for question
     2. Search Pinecone for relevant clauses (top 5)
@@ -97,6 +99,10 @@ async def query_document(
     Uses RAG (Retrieval-Augmented Generation) to provide accurate answers
     based on the actual document content.
     """
+    # Apply rate limit: 100 queries per hour per IP
+    limiter = request.app.state.limiter
+    await limiter.limit("100/hour")(request, endpoint_func=query_document)
+
     logger.info(f"Query from {current_user.email}: {query_data.question[:100]}")
 
     # Validate question

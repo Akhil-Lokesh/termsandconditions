@@ -162,6 +162,8 @@ async def run_anomaly_detection_background(
     description="""
     Upload a Terms & Conditions PDF document for comprehensive analysis.
 
+    **Rate Limit:** 10 uploads per hour per IP address.
+
     **Processing Pipeline:**
     1. Validate file type and size
     2. Extract text from PDF (pdfplumber primary, PyPDF2 fallback)
@@ -192,6 +194,10 @@ async def upload_document(
     text extraction, structure parsing, embedding generation, vector storage,
     and anomaly detection.
     """
+    # Apply rate limit: 10 uploads per hour per IP
+    limiter = request.app.state.limiter
+    await limiter.limit("10/hour")(request, endpoint_func=upload_document)
+
     logger.info(f"Document upload started by user: {current_user.email}")
 
     # Validate file type (PDF only)

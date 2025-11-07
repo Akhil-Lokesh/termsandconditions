@@ -31,6 +31,7 @@ python-dotenv==1.0.1
 
 # Utilities
 tenacity==8.2.3
+slowapi==0.1.9
 
 # Async support
 # asyncio is built into Python 3.4+, no need to install
