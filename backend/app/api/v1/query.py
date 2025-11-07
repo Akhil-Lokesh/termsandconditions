@@ -151,20 +151,35 @@ async def query_document(
         # ============================================================
         # STEP 2: Search Pinecone for relevant clauses
         # ============================================================
-        results = await pinecone_service.query(
+        search_results = await pinecone_service.query(
             query_embedding=question_embedding,
             namespace=settings.PINECONE_USER_NAMESPACE,
-            top_k=5,
+            top_k=10,  # Get more candidates
             filter={"document_id": query_data.document_id},
         )
 
-        if not results:
+        # Filter by relevance score (only keep scores > 0.7)
+        RELEVANCE_THRESHOLD = 0.7
+        relevant_results = [
+            r for r in search_results
+            if r.get("score", 0) >= RELEVANCE_THRESHOLD
+        ]
+
+        if not relevant_results:
+            # No relevant results found
+            logger.warning(f"No relevant clauses found for query: {query_data.question}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="No relevant clauses found in document. Try rephrasing your question or ask about a different topic.",
+                detail="I couldn't find any clauses in this document that directly answer your question. Could you rephrase or ask about a different aspect of the terms?",
             )
 
-        logger.info(f"Found {len(results)} relevant clauses")
+        # Take top 5 most relevant
+        results = relevant_results[:5]
+
+        logger.info(
+            f"Found {len(results)} relevant clauses "
+            f"(filtered from {len(search_results)} candidates)"
+        )
 
         # ============================================================
         # STEP 3: Build context from retrieved clauses
