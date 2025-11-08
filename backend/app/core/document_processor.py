@@ -8,9 +8,12 @@ Properly handles blocking I/O operations in async context.
 import asyncio
 from functools import partial
 import logging
+from pathlib import Path
 
 import PyPDF2
 import pdfplumber
+
+from app.core.document_type_detector import DocumentTypeDetector
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +24,7 @@ class DocumentProcessor:
     def __init__(self):
         """Initialize document processor."""
         self.supported_formats = [".pdf"]
+        self.type_detector = DocumentTypeDetector()
 
     async def extract_text(self, pdf_path: str) -> dict[str, any]:
         """
@@ -62,11 +66,28 @@ class DocumentProcessor:
         # Get metadata
         metadata = await self._extract_pdf_metadata(pdf_path)
 
+        # Detect document type
+        filename = Path(pdf_path).stem
+        type_result = self.type_detector.detect_type(text, title=filename)
+
+        # Add document type info to metadata
+        metadata["document_type"] = type_result.document_type
+        metadata["document_type_display"] = self.type_detector.get_display_name(type_result.document_type)
+        metadata["document_type_confidence"] = type_result.confidence
+        metadata["document_type_description"] = self.type_detector.get_description(type_result.document_type)
+
+        logger.info(
+            f"Detected document type: {type_result.document_type} "
+            f"({type_result.confidence:.0%} confidence)"
+        )
+
         return {
             "text": text,
             "page_count": metadata.get("page_count", 0),
             "extraction_method": method,
             "metadata": metadata,
+            "document_type": type_result.document_type,
+            "document_type_confidence": type_result.confidence,
         }
 
     async def _extract_with_pdfplumber(self, pdf_path: str) -> str:
