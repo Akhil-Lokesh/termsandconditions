@@ -92,8 +92,8 @@ class AnomalyDetector:
                     "clause_number", f"{section_name}.{clause_idx}"
                 )
 
-                if not clause_text or len(clause_text.strip()) < 5:
-                    continue  # Skip only empty or extremely short clauses (< 5 chars)
+                if not clause_text or len(clause_text.strip()) < 20:
+                    continue  # Skip only empty or very short clauses (< 20 chars)
 
                 logger.debug(
                     f"Analyzing clause {clause_number}: {clause_text[:100]}..."
@@ -151,7 +151,7 @@ class AnomalyDetector:
                     # Default to 10% (Fix #2 - unusual/rare when unknown)
                     prevalence = 0.1  # Unknown but probably unusual
 
-                # STEP 3: Determine if clause is suspicious
+                # STEP 3: Determine if clause is suspicious (AGGRESSIVE DETECTION)
                 is_unusual = prevalence < 0.30  # Rare clause
                 has_high_risk = any(
                     ind["severity"] == "high" for ind in detected_indicators
@@ -160,12 +160,25 @@ class AnomalyDetector:
                     ind["severity"] == "medium" for ind in detected_indicators
                 )
 
-                is_suspicious = is_unusual or has_high_risk or has_medium_risk
+                # NEW: More aggressive detection - flag if ANY of these are true:
+                is_suspicious = (
+                    is_unusual or  # Rare in baseline corpus
+                    has_high_risk or  # Contains high-risk patterns
+                    has_medium_risk or  # Contains medium-risk patterns
+                    len(detected_indicators) > 0  # Contains ANY risk indicator
+                )
+
+                # Additionally: Flag long clauses with vague language
+                if len(clause_text) > 500:
+                    vague_terms = ["may", "might", "could", "at our discretion", "as we see fit", "in our sole discretion"]
+                    has_vague = any(term in clause_text.lower() for term in vague_terms)
+                    if has_vague:
+                        is_suspicious = True
 
                 logger.debug(
                     f"Clause {clause_number}: Unusual={is_unusual}, "
                     f"HighRisk={has_high_risk}, MediumRisk={has_medium_risk}, "
-                    f"Suspicious={is_suspicious}"
+                    f"Suspicious={is_suspicious}, Indicators={len(detected_indicators)}"
                 )
 
                 if is_suspicious:
