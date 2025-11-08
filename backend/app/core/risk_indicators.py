@@ -212,6 +212,78 @@ class RiskIndicators:
             "description": "You cannot join class action lawsuits",
             "severity": "high",
         },
+        "biometric_data_collection": {
+            "keywords": [
+                "faceprint", "voiceprint", "facial recognition", "voice recognition",
+                "biometric data", "biometric information", "facial features",
+                "voice characteristics", "fingerprint data", "retina scan",
+                "iris scan", "gait analysis", "behavioral biometrics",
+                "collect biometric", "process biometric", "use your face",
+                "scan your face", "analyze your voice", "voice patterns",
+                "facial geometry", "unique identifier from face"
+            ],
+            "description": "Collection of biometric data (faceprints, voiceprints, facial recognition)",
+            "severity": "high"
+        },
+        "location_tracking_always_on": {
+            "keywords": [
+                "track location when app closed", "location in background",
+                "always track location", "location when not using",
+                "precise location continuously", "geolocation at all times",
+                "track your movements", "monitor your location",
+                "location tracking while inactive", "location data continuously",
+                "even when app not open", "background location access",
+                "track where you go", "location history tracking"
+            ],
+            "description": "Continuous location tracking even when app is closed",
+            "severity": "high"
+        },
+        "keystroke_monitoring": {
+            "keywords": [
+                "keystroke", "typing patterns", "keyboard activity",
+                "what you type", "monitor typing", "keylogging",
+                "input monitoring", "text input patterns",
+                "typing behavior", "keyboard usage", "track keystrokes",
+                "capture keyboard", "record typing"
+            ],
+            "description": "Monitoring of keystroke patterns and typing behavior",
+            "severity": "high"
+        },
+        "contact_harvesting": {
+            "keywords": [
+                "access your contacts", "phone book access",
+                "upload your contacts", "harvest contacts",
+                "contact list access", "phonebook sync",
+                "contacts to our servers", "collect contact information",
+                "access address book", "sync phonebook",
+                "upload phonebook", "contact scraping"
+            ],
+            "description": "Harvesting and uploading your phone contacts",
+            "severity": "high"
+        },
+        "cross_border_data_transfer": {
+            "keywords": [
+                "transfer to china", "transfer to foreign country",
+                "store data overseas", "international data transfer",
+                "servers in china", "foreign government access",
+                "data stored abroad", "transfer outside your country",
+                "send to parent company", "share with foreign entity",
+                "data leaves your country", "overseas processing"
+            ],
+            "description": "Transfer of data to foreign countries with weak privacy laws",
+            "severity": "high"
+        },
+        "children_data_violation": {
+            "keywords": [
+                "collect children data without consent",
+                "minors under 13", "coppa violation",
+                "data from children", "knowingly collect from children",
+                "under age 13", "child privacy violation",
+                "children under 13"
+            ],
+            "description": "Collecting data from children without proper consent",
+            "severity": "high"
+        },
     }
 
     # MEDIUM RISK: Concerning but common in some industries
@@ -523,6 +595,36 @@ class RiskIndicators:
             ],
             "description": "You may be liable for community/forum interactions",
             "severity": "medium",
+        },
+        "browsing_history_tracking": {
+            "keywords": [
+                "browsing history", "websites you visit",
+                "track browsing", "web history", "online activity tracking",
+                "sites you visit", "browser activity", "web tracking",
+                "internet usage", "search history"
+            ],
+            "description": "Extensive tracking of browsing history",
+            "severity": "medium"
+        },
+        "device_fingerprinting": {
+            "keywords": [
+                "device fingerprint", "unique device identifier",
+                "hardware identifiers", "device characteristics",
+                "browser fingerprint", "device signature",
+                "unique device id", "device profiling"
+            ],
+            "description": "Creating unique device fingerprints for tracking",
+            "severity": "medium"
+        },
+        "sensitive_data_categories": {
+            "keywords": [
+                "health information", "medical data", "financial data",
+                "sexual orientation", "religious beliefs", "political views",
+                "racial data", "genetic information", "union membership",
+                "sensitive personal data", "special category data"
+            ],
+            "description": "Collection of sensitive personal data categories",
+            "severity": "medium"
         },
     }
 
