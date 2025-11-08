@@ -2,9 +2,11 @@
 Document processor for extracting text and metadata from PDF files.
 
 Uses pdfplumber as primary method with PyPDF2 as fallback.
+Properly handles blocking I/O operations in async context.
 """
 
-from typing import Dict, Any
+import asyncio
+from functools import partial
 import logging
 
 import PyPDF2
@@ -20,9 +22,11 @@ class DocumentProcessor:
         """Initialize document processor."""
         self.supported_formats = [".pdf"]
 
-    async def extract_text(self, pdf_path: str) -> Dict[str, Any]:
+    async def extract_text(self, pdf_path: str) -> dict[str, any]:
         """
         Extract text from PDF using fallback strategy.
+
+        Runs blocking I/O operations in thread pool to avoid blocking event loop.
 
         Args:
             pdf_path: Path to PDF file
@@ -53,7 +57,7 @@ class DocumentProcessor:
                 logger.info("Extracted text using PyPDF2")
             except Exception as e2:
                 logger.error(f"PyPDF2 also failed: {e2}")
-                raise Exception(f"Failed to extract text from PDF: {e2}")
+                raise Exception(f"Failed to extract text from PDF: {e2}") from e2
 
         # Get metadata
         metadata = await self._extract_pdf_metadata(pdf_path)
@@ -69,6 +73,32 @@ class DocumentProcessor:
         """
         Extract text using pdfplumber (preserves layout).
 
+        Runs in thread pool to avoid blocking async event loop.
+
+        Args:
+            pdf_path: Path to PDF file
+
+        Returns:
+            str: Extracted text
+
+        Raises:
+            Exception: If extraction fails or no text found
+        """
+        loop = asyncio.get_event_loop()
+        text = await loop.run_in_executor(
+            None,  # Use default ThreadPoolExecutor
+            partial(self._sync_extract_with_pdfplumber, pdf_path)
+        )
+
+        if not text:
+            raise Exception("No text extracted using pdfplumber")
+
+        return text
+
+    def _sync_extract_with_pdfplumber(self, pdf_path: str) -> str:
+        """
+        Synchronous pdfplumber extraction (runs in thread pool).
+
         Args:
             pdf_path: Path to PDF file
 
@@ -82,14 +112,37 @@ class DocumentProcessor:
                 if page_text:
                     text_parts.append(page_text)
 
-        if not text_parts:
-            raise Exception("No text extracted using pdfplumber")
-
         return "\n\n".join(text_parts)
 
     async def _extract_with_pypdf2(self, pdf_path: str) -> str:
         """
         Fallback: Extract text using PyPDF2.
+
+        Runs in thread pool to avoid blocking async event loop.
+
+        Args:
+            pdf_path: Path to PDF file
+
+        Returns:
+            str: Extracted text
+
+        Raises:
+            Exception: If extraction fails or no text found
+        """
+        loop = asyncio.get_event_loop()
+        text = await loop.run_in_executor(
+            None,
+            partial(self._sync_extract_with_pypdf2, pdf_path)
+        )
+
+        if not text:
+            raise Exception("No text extracted using PyPDF2")
+
+        return text
+
+    def _sync_extract_with_pypdf2(self, pdf_path: str) -> str:
+        """
+        Synchronous PyPDF2 extraction (runs in thread pool).
 
         Args:
             pdf_path: Path to PDF file
@@ -105,14 +158,13 @@ class DocumentProcessor:
                 if page_text:
                     text_parts.append(page_text)
 
-        if not text_parts:
-            raise Exception("No text extracted using PyPDF2")
-
         return "\n\n".join(text_parts)
 
-    async def _extract_pdf_metadata(self, pdf_path: str) -> Dict[str, Any]:
+    async def _extract_pdf_metadata(self, pdf_path: str) -> dict[str, any]:
         """
         Extract PDF metadata (author, creation date, etc.).
+
+        Runs in thread pool to avoid blocking async event loop.
 
         Args:
             pdf_path: Path to PDF file
@@ -121,27 +173,46 @@ class DocumentProcessor:
             dict: PDF metadata
         """
         try:
-            with open(pdf_path, "rb") as file:
-                pdf_reader = PyPDF2.PdfReader(file)
-                metadata = pdf_reader.metadata or {}
-
-                return {
-                    "page_count": len(pdf_reader.pages),
-                    "author": metadata.get("/Author", ""),
-                    "title": metadata.get("/Title", ""),
-                    "subject": metadata.get("/Subject", ""),
-                    "creator": metadata.get("/Creator", ""),
-                    "producer": metadata.get("/Producer", ""),
-                    "creation_date": metadata.get("/CreationDate", ""),
-                    "modification_date": metadata.get("/ModDate", ""),
-                }
+            loop = asyncio.get_event_loop()
+            metadata = await loop.run_in_executor(
+                None,
+                partial(self._sync_extract_pdf_metadata, pdf_path)
+            )
+            return metadata
         except Exception as e:
             logger.warning(f"Failed to extract metadata: {e}")
             return {"page_count": 0}
 
-    async def is_tc_document(self, text: str) -> bool:
+    def _sync_extract_pdf_metadata(self, pdf_path: str) -> dict[str, any]:
+        """
+        Synchronous metadata extraction (runs in thread pool).
+
+        Args:
+            pdf_path: Path to PDF file
+
+        Returns:
+            dict: PDF metadata
+        """
+        with open(pdf_path, "rb") as file:
+            pdf_reader = PyPDF2.PdfReader(file)
+            metadata = pdf_reader.metadata or {}
+
+            return {
+                "page_count": len(pdf_reader.pages),
+                "author": metadata.get("/Author", ""),
+                "title": metadata.get("/Title", ""),
+                "subject": metadata.get("/Subject", ""),
+                "creator": metadata.get("/Creator", ""),
+                "producer": metadata.get("/Producer", ""),
+                "creation_date": metadata.get("/CreationDate", ""),
+                "modification_date": metadata.get("/ModDate", ""),
+            }
+
+    def is_tc_document(self, text: str) -> bool:
         """
         Simple heuristic to check if document is a T&C.
+
+        This is a synchronous operation (string matching), no need for async.
 
         Args:
             text: Extracted text from document
