@@ -104,6 +104,16 @@ class AnomalyDetector:
                     clause_text=clause_text, service_type=service_type
                 )
 
+                logger.info(
+                    f"Clause {clause_number}: Detected {len(detected_indicators)} risk indicators"
+                )
+                if detected_indicators:
+                    indicator_summary = [
+                        f"{ind['indicator']} ({ind['severity']})"
+                        for ind in detected_indicators
+                    ]
+                    logger.info(f"  Indicators: {indicator_summary}")
+
                 logger.debug(
                     f"Clause {clause_number}: Found {len(detected_indicators)} keyword indicators"
                 )
@@ -141,6 +151,10 @@ class AnomalyDetector:
                     prevalence = await self.prevalence_calc.calculate_prevalence(
                         clause_text=clause_text, clause_type=section_name
                     )
+                    logger.info(
+                        f"Clause {clause_number}: Prevalence = {prevalence:.2%} (threshold: 30%)"
+                    )
+                    logger.info(f"  Is unusual: {prevalence < 0.30}")
                     logger.debug(
                         f"Clause {clause_number}: Prevalence = {prevalence:.2%}"
                     )
@@ -150,6 +164,9 @@ class AnomalyDetector:
                     )
                     # Default to 10% (Fix #2 - unusual/rare when unknown)
                     prevalence = 0.1  # Unknown but probably unusual
+                    logger.info(
+                        f"Clause {clause_number}: Prevalence defaulted to 10% (error)"
+                    )
 
                 # STEP 3: Determine if clause is suspicious (AGGRESSIVE DETECTION)
                 is_unusual = prevalence < 0.30  # Rare clause
@@ -169,11 +186,22 @@ class AnomalyDetector:
                 )
 
                 # Additionally: Flag long clauses with vague language
+                has_vague_language = False
                 if len(clause_text) > 500:
                     vague_terms = ["may", "might", "could", "at our discretion", "as we see fit", "in our sole discretion"]
                     has_vague = any(term in clause_text.lower() for term in vague_terms)
                     if has_vague:
                         is_suspicious = True
+                        has_vague_language = True
+
+                logger.info(
+                    f"Clause {clause_number}: Decision - is_suspicious={is_suspicious}"
+                )
+                logger.info(
+                    f"  Reasons: unusual={is_unusual}, high_risk={has_high_risk}, "
+                    f"medium_risk={has_medium_risk}, vague_language={has_vague_language}, "
+                    f"any_indicators={len(detected_indicators) > 0}"
+                )
 
                 logger.debug(
                     f"Clause {clause_number}: Unusual={is_unusual}, "
