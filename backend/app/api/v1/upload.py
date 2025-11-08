@@ -194,9 +194,7 @@ async def upload_document(
     text extraction, structure parsing, embedding generation, vector storage,
     and anomaly detection.
     """
-    # Apply rate limit: 10 uploads per hour per IP
-    limiter = request.app.state.limiter
-    await limiter.limit("10/hour")(request, endpoint_func=upload_document)
+    # Rate limiting is handled by slowapi decorator in main.py
 
     logger.info(f"Document upload started by user: {current_user.email}")
 
@@ -272,28 +270,33 @@ async def upload_document(
             )
 
         # ============================================================
-        # STEP 2.5: Save clauses to database
+        # STEP 2.5: Prepare clauses for database (will be saved with document)
         # ============================================================
-        logger.info(f"Saving {num_clauses} clauses to database...")
+        logger.info(f"Preparing {num_clauses} clauses for database...")
 
+        clause_records = []
         for section in sections:
             section_name = section.get("title", "Unknown Section")
             section_number = section.get("number", "0")
 
             for clause in section.get("clauses", []):
+                # Store section_number in metadata since it's not a direct column
+                clause_metadata = {
+                    "section_number": section_number
+                }
+                
                 clause_record = Clause(
                     id=str(uuid.uuid4()),
                     document_id=doc_id,
                     section=section_name,
-                    section_number=section_number,
                     clause_number=clause.get("id", ""),
                     text=clause.get("text", ""),
+                    clause_metadata=clause_metadata,
                 )
-                db.add(clause_record)
+                clause_records.append(clause_record)
 
-        # Commit clauses
-        db.commit()
-        logger.info(f"✓ Saved {num_clauses} clauses to database")
+        # Clauses will be committed together with the document
+        logger.info(f"✓ Prepared {num_clauses} clauses")
 
         # ============================================================
         # STEP 3: Create semantic chunks
@@ -338,7 +341,7 @@ async def upload_document(
         logger.info(f"Stored {len(chunks)} vectors in Pinecone")
 
         # ============================================================
-        # STEP 7: Save to database
+        # STEP 7: Save to database (document + clauses together)
         # ============================================================
         document = Document(
             id=doc_id,
@@ -352,10 +355,16 @@ async def upload_document(
         )
 
         db.add(document)
+        
+        # Add all clause records
+        for clause_record in clause_records:
+            db.add(clause_record)
+        
+        # Commit document and clauses together
         db.commit()
         db.refresh(document)
 
-        logger.info(f"Document saved to database: {doc_id}")
+        logger.info(f"Document and {len(clause_records)} clauses saved to database: {doc_id}")
 
         # ============================================================
         # STEP 8: Schedule anomaly detection in background

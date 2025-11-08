@@ -2,44 +2,31 @@
 """
 Baseline Corpus Indexing Script
 
-This script processes collected T&C PDFs and indexes them to Pinecone's baseline namespace
+This script processes T&C text files (.txt) and indexes them to Pinecone's baseline namespace
 for anomaly detection comparison.
 
 Features:
 - Batch processing with progress tracking
-- Resume capability (skip already indexed)
 - Error recovery and retry logic
 - Performance metrics tracking
-- Dry-run mode for testing
 
 Prerequisites:
-    - Baseline corpus collected (scripts/collect_baseline_corpus.py)
+    - Baseline corpus text files in data/baseline_corpus/
     - Environment variables configured (.env)
     - Pinecone API key and index created
 
 Usage:
-    # Index all documents
     python scripts/index_baseline_corpus.py
-
-    # Dry run (no actual indexing)
-    python scripts/index_baseline_corpus.py --dry-run
-
-    # Force re-index
-    python scripts/index_baseline_corpus.py --force
-
-    # Resume from specific category
-    python scripts/index_baseline_corpus.py --category tech
 """
 
 import asyncio
 import sys
-import time
-import json
 import logging
+import time
+import argparse
 from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime
-import argparse
 
 # Add backend to path
 sys.path.insert(0, str(Path(__file__).parent.parent))

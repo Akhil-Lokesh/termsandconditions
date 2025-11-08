@@ -155,10 +155,11 @@ class APIClient {
     const formData = new FormData();
     formData.append('file', file);
 
-    const response = await this.client.post<DocumentUploadResponse>('/documents', formData, {
+    const response = await this.client.post<DocumentUploadResponse>('/documents/', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: 120000, // 2 minutes for document processing
     });
 
     return response.data;

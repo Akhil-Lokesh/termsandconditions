@@ -1,5 +1,6 @@
 """Document model for storing T&C documents."""
 
+from typing import Optional
 from sqlalchemy import Column, String, Integer, Text, DateTime, ForeignKey, JSON, Float
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -13,6 +14,22 @@ class Document(Base):
 
     __tablename__ = "documents"
 
+    # Type hints for IDE support (SQLAlchemy creates these at runtime)
+    id: str
+    user_id: str
+    filename: str
+    text: Optional[str]
+    document_metadata: Optional[dict]
+    page_count: Optional[int]
+    clause_count: Optional[int]
+    anomaly_count: Optional[int]
+    risk_score: Optional[float]
+    risk_level: Optional[str]
+    processing_status: str
+    created_at: datetime
+    updated_at: datetime
+
+    # Column definitions
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
     filename = Column(String, nullable=False)
