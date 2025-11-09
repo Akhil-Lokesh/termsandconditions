@@ -23,6 +23,9 @@ from app.core.semantic_risk_detector import SemanticRiskDetector  # Legacy - wil
 from app.core.compound_risk_detector import CompoundRiskDetector
 from app.core.statistical_outlier_detector import StatisticalOutlierDetector  # Stage 1: Statistical
 from app.core.semantic_anomaly_detector import SemanticAnomalyDetector  # Stage 1: Semantic
+from app.core.industry_baseline_filter import IndustryBaselineFilter  # Stage 2: Industry Context
+from app.core.service_type_context_filter import ServiceTypeContextFilter  # Stage 2: Service Type
+from app.core.temporal_context_filter import TemporalContextFilter  # Stage 2: Temporal Context
 from app.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -99,6 +102,28 @@ class AnomalyDetector:
             'semantic': 0.35,        # 35% weight
             'statistical': 0.25      # 25% weight
         }
+
+        # NEW: Stage 2 Context Filters
+        try:
+            self.industry_filter = IndustryBaselineFilter(pinecone_index=self.pinecone.index)
+            logger.info("Industry baseline filter initialized")
+        except Exception as e:
+            logger.warning(f"Failed to initialize industry filter: {e}")
+            self.industry_filter = None
+
+        try:
+            self.service_type_filter = ServiceTypeContextFilter()
+            logger.info("Service type context filter initialized")
+        except Exception as e:
+            logger.warning(f"Failed to initialize service type filter: {e}")
+            self.service_type_filter = None
+
+        try:
+            self.temporal_filter = TemporalContextFilter()
+            logger.info("Temporal context filter initialized")
+        except Exception as e:
+            logger.warning(f"Failed to initialize temporal filter: {e}")
+            self.temporal_filter = None
 
     async def _run_multi_stage_detection(
         self,
@@ -276,12 +301,293 @@ class AnomalyDetector:
             }
         }
 
+    async def run_stage2(
+        self,
+        stage1_results: List[Dict[str, Any]],
+        document_context: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """
+        Run Stage 2 context filtering on Stage 1 anomalies.
+
+        Applies industry-specific baselines, service type context,
+        and temporal adjustments to refine anomaly detection.
+
+        Args:
+            stage1_results: List of anomalies from Stage 1
+            document_context: Context about the document including:
+                - industry: Industry type (e.g., 'children_apps', 'health_apps')
+                - service_type: Service type (e.g., 'subscription', 'freemium')
+                - effective_date: When T&C became effective
+                - last_modified: When T&C were last modified
+                - is_change: Whether this is a change from previous version
+
+        Returns:
+            List of anomalies with Stage 2 metadata and filtering applied
+        """
+        logger.info(f"Starting Stage 2 filtering on {len(stage1_results)} anomalies")
+        stage2_start = time.time()
+
+        # Extract document context with defaults
+        industry = document_context.get('industry', 'saas')  # Default to SaaS
+        service_type = document_context.get('service_type', 'subscription')  # Default to subscription
+        effective_date = document_context.get('effective_date')
+        last_modified = document_context.get('last_modified')
+        is_change = document_context.get('is_change', False)
+
+        logger.info(
+            f"Document context: industry={industry}, service_type={service_type}, "
+            f"is_change={is_change}"
+        )
+
+        stage2_results = []
+        filtered_out_count = 0
+
+        for anomaly in stage1_results:
+            try:
+                # Extract anomaly data
+                clause_text = anomaly.get('clause_text', '')
+                clause_number = anomaly.get('clause_number', 'unknown')
+                category = anomaly.get('risk_category', 'other')
+                stage1_confidence = anomaly.get('stage1_detection', {}).get('stage1_confidence', 0.5)
+
+                # Get base risk score (use severity as proxy: high=8, medium=5, low=3)
+                severity = anomaly.get('severity', 'medium')
+                base_risk_score = {'high': 8.0, 'medium': 5.0, 'low': 3.0}.get(severity, 5.0)
+
+                logger.debug(
+                    f"Processing clause {clause_number}: base_risk={base_risk_score}, "
+                    f"stage1_confidence={stage1_confidence:.2f}"
+                )
+
+                # STEP 1: Calculate prevalence and apply industry modifier
+                prevalence_result = None
+                industry_adjustment = None
+
+                if self.industry_filter:
+                    try:
+                        # Get clause embedding (reuse from stage1 or generate)
+                        clause_embedding = None
+                        if self.openai:
+                            try:
+                                clause_embedding = await self.openai.get_embeddings(clause_text)
+                            except Exception as e:
+                                logger.warning(f"Failed to get embedding for {clause_number}: {e}")
+
+                        if clause_embedding:
+                            # Calculate prevalence
+                            prevalence_result = await self.industry_filter.calculate_prevalence(
+                                clause_embedding=clause_embedding,
+                                industry=industry,
+                                category=category
+                            )
+
+                            # Apply industry modifier
+                            industry_adjustment = self.industry_filter.apply_industry_modifier(
+                                base_risk_score=base_risk_score,
+                                industry=industry,
+                                category=category,
+                                prevalence=prevalence_result.get('prevalence', 0.0),
+                                clause_text=clause_text
+                            )
+
+                            logger.debug(
+                                f"Clause {clause_number}: prevalence={prevalence_result.get('prevalence', 0):.2%}, "
+                                f"industry_modifier={industry_adjustment.get('industry_modifier', 1.0):.2f}"
+                            )
+                        else:
+                            logger.warning(f"No embedding available for clause {clause_number}, skipping industry filter")
+
+                    except Exception as e:
+                        logger.error(f"Industry filtering failed for clause {clause_number}: {e}")
+                        prevalence_result = {'prevalence': 0.0, 'error': str(e)}
+                        industry_adjustment = {
+                            'base_score': base_risk_score,
+                            'industry_modifier': 1.0,
+                            'adjusted_score': base_risk_score,
+                            'reasoning': f'Error: {str(e)}'
+                        }
+                else:
+                    # No industry filter available
+                    prevalence_result = {'prevalence': 0.0, 'note': 'Industry filter not available'}
+                    industry_adjustment = {
+                        'base_score': base_risk_score,
+                        'industry_modifier': 1.0,
+                        'adjusted_score': base_risk_score,
+                        'reasoning': 'Industry filter not initialized'
+                    }
+
+                # Use industry-adjusted score for further processing
+                current_risk_score = industry_adjustment.get('adjusted_score', base_risk_score)
+
+                # STEP 2: Apply service type context filter
+                service_type_result = None
+
+                if self.service_type_filter:
+                    try:
+                        # Prepare clause metadata for disclosure quality check
+                        clause_metadata = {
+                            'text': clause_text,
+                            'position': anomaly.get('position', 0.5),  # Position in document (0-1)
+                            'readability_score': anomaly.get('readability_score'),
+                            'has_specific_details': anomaly.get('has_specific_details')
+                        }
+
+                        # Create detection dict for service type filter
+                        detection = {
+                            'category': category,
+                            'confidence': stage1_confidence,
+                            'severity': severity
+                        }
+
+                        service_type_result = self.service_type_filter.filter_by_service_context(
+                            detection=detection,
+                            service_type=service_type,
+                            clause_metadata=clause_metadata
+                        )
+
+                        logger.debug(
+                            f"Clause {clause_number}: keep_anomaly={service_type_result.get('keep_anomaly')}, "
+                            f"context_score={service_type_result.get('context_score', 0.5):.2f}"
+                        )
+
+                    except Exception as e:
+                        logger.error(f"Service type filtering failed for clause {clause_number}: {e}")
+                        service_type_result = {
+                            'keep_anomaly': True,
+                            'reason': f'Error: {str(e)}',
+                            'context_score': 0.5,
+                            'error': str(e)
+                        }
+                else:
+                    # No service type filter available
+                    service_type_result = {
+                        'keep_anomaly': True,
+                        'reason': 'Service type filter not initialized',
+                        'context_score': 0.5
+                    }
+
+                # STEP 3: Apply temporal adjustment
+                temporal_adjustment = None
+
+                if self.temporal_filter:
+                    try:
+                        temporal_adjustment = self.temporal_filter.apply_temporal_adjustment(
+                            risk_score=current_risk_score,
+                            effective_date=effective_date,
+                            last_modified=last_modified,
+                            is_change=is_change
+                        )
+
+                        # Update risk score with temporal adjustment
+                        current_risk_score = temporal_adjustment.get('adjusted_score', current_risk_score)
+
+                        logger.debug(
+                            f"Clause {clause_number}: temporal_modifier={temporal_adjustment.get('temporal_modifier', 1.0):.2f}, "
+                            f"final_score={current_risk_score:.2f}"
+                        )
+
+                    except Exception as e:
+                        logger.error(f"Temporal adjustment failed for clause {clause_number}: {e}")
+                        temporal_adjustment = {
+                            'temporal_modifier': 1.0,
+                            'adjusted_score': current_risk_score,
+                            'reason': f'Error: {str(e)}',
+                            'error': str(e)
+                        }
+                else:
+                    # No temporal filter available
+                    temporal_adjustment = {
+                        'temporal_modifier': 1.0,
+                        'adjusted_score': current_risk_score,
+                        'reason': 'Temporal filter not initialized'
+                    }
+
+                # STEP 4: Calculate Stage 2 confidence
+                # Combine Stage 1 confidence with context scores
+                context_score = service_type_result.get('context_score', 0.5)
+
+                # Stage 2 confidence = weighted average of Stage 1 confidence and context factors
+                # Lower context_score means more concerning (alarming), so invert it for confidence
+                context_confidence = 1.0 - context_score  # Alarming (0.1) becomes 0.9 confidence
+
+                # Weight: 70% Stage 1, 30% context
+                stage2_confidence = (stage1_confidence * 0.7) + (context_confidence * 0.3)
+
+                # STEP 5: Determine if should proceed to Stage 3
+                keep_anomaly = service_type_result.get('keep_anomaly', True)
+                final_score = current_risk_score
+                calibrated_confidence = stage2_confidence
+
+                # Proceed to Stage 3 if:
+                # 1. Service type filter says keep AND
+                # 2. (Adjusted score >= 5.0 OR calibrated confidence >= 0.60)
+                proceed_to_stage3 = (
+                    keep_anomaly and
+                    (final_score >= 5.0 or calibrated_confidence >= 0.60)
+                )
+
+                # Log filtering decision
+                if not keep_anomaly:
+                    logger.info(
+                        f"Clause {clause_number} filtered out by service type context: "
+                        f"{service_type_result.get('reason', 'Unknown reason')}"
+                    )
+                    filtered_out_count += 1
+                elif not proceed_to_stage3:
+                    logger.info(
+                        f"Clause {clause_number} filtered out by score/confidence thresholds: "
+                        f"score={final_score:.2f}, confidence={calibrated_confidence:.2f}"
+                    )
+                    filtered_out_count += 1
+                else:
+                    logger.debug(
+                        f"Clause {clause_number} proceeding to Stage 3: "
+                        f"score={final_score:.2f}, confidence={calibrated_confidence:.2f}"
+                    )
+
+                # STEP 6: Update anomaly with Stage 2 metadata
+                stage2_anomaly = {
+                    **anomaly,  # Include all Stage 1 fields
+                    'prevalence': prevalence_result,
+                    'industry_adjustment': industry_adjustment,
+                    'service_type_filter': service_type_result,
+                    'temporal_adjustment': temporal_adjustment,
+                    'stage2_confidence': stage2_confidence,
+                    'final_risk_score': final_score,
+                    'calibrated_confidence': calibrated_confidence,
+                    'proceed_to_stage3': proceed_to_stage3,
+                    'filtered_reason': None if proceed_to_stage3 else service_type_result.get('reason')
+                }
+
+                stage2_results.append(stage2_anomaly)
+
+            except Exception as e:
+                logger.error(f"Stage 2 processing failed for anomaly: {e}", exc_info=True)
+                # Include anomaly with error info
+                stage2_results.append({
+                    **anomaly,
+                    'stage2_error': str(e),
+                    'proceed_to_stage3': True  # Keep on error to be safe
+                })
+
+        # Performance metrics
+        stage2_duration = (time.time() - stage2_start) * 1000
+        logger.info(
+            f"Stage 2 complete: {len(stage2_results)} anomalies processed, "
+            f"{filtered_out_count} filtered out, "
+            f"{sum(1 for a in stage2_results if a.get('proceed_to_stage3', False))} proceeding to Stage 3, "
+            f"took {stage2_duration:.2f}ms"
+        )
+
+        return stage2_results
+
     async def detect_anomalies(
         self,
         document_id: str,
         sections: List[Dict[str, Any]],
         company_name: str = "Unknown",
         service_type: str = "general",
+        document_context: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Detect all anomalies in a document.
@@ -289,14 +595,25 @@ class AnomalyDetector:
         Universal detection that works for ANY T&C document from ANY company.
         Identifies unusual, risky, or consumer-unfriendly clauses automatically.
 
+        Multi-stage pipeline:
+        - Stage 1: Pattern-based, Semantic, and Statistical detection
+        - Stage 2: Industry baseline, Service type context, Temporal filtering
+        - Stage 3: Compound risk detection and final reporting
+
         Args:
             document_id: Document identifier
             sections: List of parsed sections with clauses
             company_name: Name of the company (optional)
             service_type: Type of service for context-dependent analysis
+            document_context: Optional context for Stage 2 filtering including:
+                - industry: Industry type (e.g., 'children_apps', 'health_apps')
+                - service_type: Service type (e.g., 'subscription', 'freemium')
+                - effective_date: When T&C became effective
+                - last_modified: When T&C were last modified
+                - is_change: Whether this is a change from previous version
 
         Returns:
-            List of detected anomalies with full details
+            List of detected anomalies with full Stage 1 and Stage 2 details
         """
         logger.info(f"Starting anomaly detection for document {document_id}")
         logger.info(f"Company: {company_name}, Service Type: {service_type}")
@@ -541,7 +858,27 @@ class AnomalyDetector:
                     )
 
         logger.info(
-            f"Anomaly detection complete: {len(all_anomalies)} anomalies found out of {total_clauses} clauses"
+            f"Stage 1 complete: {len(all_anomalies)} anomalies found out of {total_clauses} clauses"
+        )
+
+        # STAGE 2: Apply context filtering
+        if document_context is None:
+            # Use defaults if no context provided
+            document_context = {
+                'industry': 'saas',
+                'service_type': service_type,
+                'is_change': False
+            }
+
+        # Run Stage 2 filtering
+        all_anomalies = await self.run_stage2(
+            stage1_results=all_anomalies,
+            document_context=document_context
+        )
+
+        logger.info(
+            f"Stage 2 complete: {sum(1 for a in all_anomalies if a.get('proceed_to_stage3', False))} "
+            f"anomalies proceeding to Stage 3"
         )
 
         # STEP 6: Detect compound risks (Fix #6)
