@@ -4,8 +4,13 @@ Anomaly detector for identifying risky clauses.
 Universal anomaly detection that works for ANY Terms & Conditions document
 from ANY company. Automatically identifies unusual, risky, or consumer-unfriendly
 clauses without being told what to look for.
+
+Multi-Stage Detection Pipeline:
+- Stage 1: Pattern-based (keyword), Semantic (embeddings), Statistical (Isolation Forest)
+- Stage 2: Ensemble combination and confidence calibration
 """
 
+import time
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 
@@ -14,8 +19,10 @@ from app.services.openai_service import OpenAIService
 from app.core.prevalence_calculator import PrevalenceCalculator
 from app.core.risk_assessor import RiskAssessor
 from app.core.risk_indicators import RiskIndicators
-from app.core.semantic_risk_detector import SemanticRiskDetector  # Fix #5
-from app.core.compound_risk_detector import CompoundRiskDetector  # Fix #6
+from app.core.semantic_risk_detector import SemanticRiskDetector  # Legacy - will be replaced
+from app.core.compound_risk_detector import CompoundRiskDetector
+from app.core.statistical_outlier_detector import StatisticalOutlierDetector  # Stage 1: Statistical
+from app.core.semantic_anomaly_detector import SemanticAnomalyDetector  # Stage 1: Semantic
 from app.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -29,24 +36,245 @@ class AnomalyDetector:
         openai_service: Optional[OpenAIService] = None,
         pinecone_service: Optional[PineconeService] = None,
         db: Optional[Session] = None,
+        enable_statistical_detection: bool = True,
+        enable_semantic_detection: bool = True,
     ):
         """
-        Initialize anomaly detector.
+        Initialize anomaly detector with multi-stage detection pipeline.
 
         Args:
             openai_service: Optional OpenAI service instance
             pinecone_service: Optional Pinecone service instance
             db: Optional database session
+            enable_statistical_detection: Enable Stage 1 statistical detection
+            enable_semantic_detection: Enable Stage 1 semantic detection
         """
         self.openai = openai_service or OpenAIService()
         self.pinecone = pinecone_service or PineconeService()
         self.db = db
+
+        # Legacy detectors (maintained for backward compatibility)
         self.prevalence_calc = PrevalenceCalculator(self.openai, self.pinecone, self.db)
         self.risk_assessor = RiskAssessor(self.openai, use_gpt5=True, db=self.db)
         self.risk_indicators = RiskIndicators()
-        self.semantic_detector = SemanticRiskDetector(self.openai)  # Fix #5
-        self.compound_detector = CompoundRiskDetector()  # Fix #6
+        self.semantic_detector = SemanticRiskDetector(self.openai)  # Legacy
+        self.compound_detector = CompoundRiskDetector()
         self._semantic_initialized = False
+
+        # NEW: Stage 1 Multi-Method Detection
+        self.enable_statistical = enable_statistical_detection
+        self.enable_semantic = enable_semantic_detection
+
+        # Initialize Statistical Outlier Detector (Stage 1)
+        if self.enable_statistical:
+            try:
+                self.statistical_detector = StatisticalOutlierDetector(
+                    contamination=0.1,
+                    random_state=42
+                )
+                logger.info("Statistical outlier detector initialized")
+            except Exception as e:
+                logger.warning(f"Failed to initialize statistical detector: {e}")
+                self.statistical_detector = None
+        else:
+            self.statistical_detector = None
+
+        # Initialize Semantic Anomaly Detector (Stage 1)
+        if self.enable_semantic:
+            try:
+                self.semantic_anomaly_detector = SemanticAnomalyDetector(
+                    model_name='sentence-transformers/all-MiniLM-L6-v2',  # Lightweight model
+                    similarity_threshold=0.75
+                )
+                logger.info(f"Semantic anomaly detector initialized (available: {self.semantic_anomaly_detector.is_available})")
+            except Exception as e:
+                logger.warning(f"Failed to initialize semantic anomaly detector: {e}")
+                self.semantic_anomaly_detector = None
+        else:
+            self.semantic_anomaly_detector = None
+
+        # Detection method weights for Stage 1 confidence calculation
+        self.method_weights = {
+            'pattern_based': 0.40,  # 40% weight
+            'semantic': 0.35,        # 35% weight
+            'statistical': 0.25      # 25% weight
+        }
+
+    async def _run_multi_stage_detection(
+        self,
+        clause_text: str,
+        clause_dict: Dict[str, Any],
+        service_type: str = "general"
+    ) -> Dict[str, Any]:
+        """
+        Run multi-stage detection on a single clause.
+
+        Combines pattern-based, semantic, and statistical detection methods.
+
+        Args:
+            clause_text: The clause text to analyze
+            clause_dict: Clause dictionary for statistical detector
+            service_type: Type of service for context
+
+        Returns:
+            Dictionary containing detection results from all methods
+        """
+        detections = []
+        method_confidences = {}
+
+        # METHOD 1: Pattern-Based Detection (Keyword matching)
+        pattern_start = time.time()
+        try:
+            detected_indicators = self.risk_indicators.detect_indicators(
+                clause_text=clause_text,
+                service_type=service_type
+            )
+
+            # Calculate pattern-based confidence
+            if detected_indicators:
+                # Higher confidence if more high-severity indicators
+                high_severity = sum(1 for ind in detected_indicators if ind['severity'] == 'high')
+                medium_severity = sum(1 for ind in detected_indicators if ind['severity'] == 'medium')
+
+                # Confidence: 0.5 base + (0.2 per high) + (0.1 per medium), capped at 1.0
+                pattern_confidence = min(1.0, 0.5 + (high_severity * 0.2) + (medium_severity * 0.1))
+            else:
+                pattern_confidence = 0.0
+
+            method_confidences['pattern_based'] = pattern_confidence
+
+            detections.append({
+                'method': 'pattern_based',
+                'indicators': detected_indicators,
+                'count': len(detected_indicators),
+                'has_high_risk': any(ind['severity'] == 'high' for ind in detected_indicators),
+                'has_medium_risk': any(ind['severity'] == 'medium' for ind in detected_indicators),
+                'confidence': pattern_confidence,
+                'timing_ms': (time.time() - pattern_start) * 1000
+            })
+
+            logger.debug(f"Pattern detection: {len(detected_indicators)} indicators, confidence={pattern_confidence:.2f}")
+
+        except Exception as e:
+            logger.error(f"Pattern-based detection failed: {e}")
+            detections.append({
+                'method': 'pattern_based',
+                'error': str(e),
+                'confidence': 0.0
+            })
+            method_confidences['pattern_based'] = 0.0
+
+        # METHOD 2: Semantic Anomaly Detection (Embeddings)
+        semantic_start = time.time()
+        try:
+            if self.semantic_anomaly_detector and self.semantic_anomaly_detector.is_available:
+                semantic_result = self.semantic_anomaly_detector.detect_semantic_anomalies(clause_text)
+
+                method_confidences['semantic'] = semantic_result.get('confidence', 0.0)
+
+                detections.append({
+                    'method': 'semantic',
+                    'is_anomalous': semantic_result.get('is_anomalous', False),
+                    'similarity_score': semantic_result.get('similarity_score', 0.0),
+                    'matched_pattern': semantic_result.get('matched_pattern'),
+                    'matched_category': semantic_result.get('matched_category'),
+                    'severity': semantic_result.get('severity', 'unknown'),
+                    'confidence': semantic_result.get('confidence', 0.0),
+                    'all_matches': semantic_result.get('all_matches', []),
+                    'timing_ms': (time.time() - semantic_start) * 1000
+                })
+
+                logger.debug(
+                    f"Semantic detection: anomalous={semantic_result.get('is_anomalous')}, "
+                    f"similarity={semantic_result.get('similarity_score', 0):.3f}, "
+                    f"confidence={semantic_result.get('confidence', 0):.2f}"
+                )
+            else:
+                # Semantic detector not available
+                detections.append({
+                    'method': 'semantic',
+                    'available': False,
+                    'confidence': 0.0
+                })
+                method_confidences['semantic'] = 0.0
+                logger.debug("Semantic detection: not available")
+
+        except Exception as e:
+            logger.error(f"Semantic detection failed: {e}")
+            detections.append({
+                'method': 'semantic',
+                'error': str(e),
+                'confidence': 0.0
+            })
+            method_confidences['semantic'] = 0.0
+
+        # METHOD 3: Statistical Outlier Detection (Isolation Forest)
+        statistical_start = time.time()
+        try:
+            if self.statistical_detector and self.statistical_detector.is_fitted:
+                statistical_result = self.statistical_detector.predict(clause_dict)
+
+                method_confidences['statistical'] = statistical_result.get('confidence', 0.0)
+
+                detections.append({
+                    'method': 'statistical',
+                    'is_outlier': statistical_result.get('is_outlier', False),
+                    'anomaly_score': statistical_result.get('anomaly_score', 0.0),
+                    'confidence': statistical_result.get('confidence', 0.0),
+                    'features': statistical_result.get('features', {}),
+                    'timing_ms': (time.time() - statistical_start) * 1000
+                })
+
+                logger.debug(
+                    f"Statistical detection: outlier={statistical_result.get('is_outlier')}, "
+                    f"score={statistical_result.get('anomaly_score', 0):.3f}, "
+                    f"confidence={statistical_result.get('confidence', 0):.2f}"
+                )
+            else:
+                # Statistical detector not fitted
+                detections.append({
+                    'method': 'statistical',
+                    'fitted': False,
+                    'confidence': 0.0
+                })
+                method_confidences['statistical'] = 0.0
+                logger.debug("Statistical detection: not fitted (baseline corpus required)")
+
+        except Exception as e:
+            logger.error(f"Statistical detection failed: {e}")
+            detections.append({
+                'method': 'statistical',
+                'error': str(e),
+                'confidence': 0.0
+            })
+            method_confidences['statistical'] = 0.0
+
+        # Calculate weighted Stage 1 confidence
+        stage1_confidence = (
+            method_confidences.get('pattern_based', 0.0) * self.method_weights['pattern_based'] +
+            method_confidences.get('semantic', 0.0) * self.method_weights['semantic'] +
+            method_confidences.get('statistical', 0.0) * self.method_weights['statistical']
+        )
+
+        # Determine if should proceed to Stage 2
+        # Proceed if ANY method flags the clause
+        pattern_flagged = any(d.get('method') == 'pattern_based' and d.get('count', 0) > 0 for d in detections)
+        semantic_flagged = any(d.get('method') == 'semantic' and d.get('is_anomalous', False) for d in detections)
+        statistical_flagged = any(d.get('method') == 'statistical' and d.get('is_outlier', False) for d in detections)
+
+        proceed_to_stage2 = pattern_flagged or semantic_flagged or statistical_flagged
+
+        return {
+            'detections': detections,
+            'method_confidences': method_confidences,
+            'stage1_confidence': stage1_confidence,
+            'proceed_to_stage2': proceed_to_stage2,
+            'flags': {
+                'pattern': pattern_flagged,
+                'semantic': semantic_flagged,
+                'statistical': statistical_flagged
+            }
+        }
 
     async def detect_anomalies(
         self,
@@ -95,28 +323,42 @@ class AnomalyDetector:
                 if not clause_text or len(clause_text.strip()) < 20:
                     continue  # Skip only empty or very short clauses (< 20 chars)
 
-                logger.debug(
+                logger.info(
                     f"Analyzing clause {clause_number}: {clause_text[:100]}..."
                 )
 
-                # STEP 1: Detect universal risk indicators (keyword-based)
-                detected_indicators = self.risk_indicators.detect_indicators(
-                    clause_text=clause_text, service_type=service_type
+                # NEW: Run multi-stage detection (Pattern + Semantic + Statistical)
+                clause_dict = {'text': clause_text, 'section': section_name}
+                multi_stage_results = await self._run_multi_stage_detection(
+                    clause_text=clause_text,
+                    clause_dict=clause_dict,
+                    service_type=service_type
                 )
 
-                logger.info(
-                    f"Clause {clause_number}: Detected {len(detected_indicators)} risk indicators"
+                # Extract pattern-based indicators for backward compatibility
+                pattern_detection = next(
+                    (d for d in multi_stage_results['detections'] if d['method'] == 'pattern_based'),
+                    {'indicators': [], 'count': 0}
                 )
+                detected_indicators = pattern_detection.get('indicators', [])
+
+                logger.info(
+                    f"Clause {clause_number}: Multi-stage detection complete - "
+                    f"Stage1 confidence={multi_stage_results['stage1_confidence']:.2f}, "
+                    f"Proceed to Stage2={multi_stage_results['proceed_to_stage2']}"
+                )
+                logger.info(
+                    f"  Flags: pattern={multi_stage_results['flags']['pattern']}, "
+                    f"semantic={multi_stage_results['flags']['semantic']}, "
+                    f"statistical={multi_stage_results['flags']['statistical']}"
+                )
+
                 if detected_indicators:
                     indicator_summary = [
                         f"{ind['indicator']} ({ind['severity']})"
                         for ind in detected_indicators
                     ]
-                    logger.info(f"  Indicators: {indicator_summary}")
-
-                logger.debug(
-                    f"Clause {clause_number}: Found {len(detected_indicators)} keyword indicators"
-                )
+                    logger.info(f"  Pattern indicators: {indicator_summary}")
 
                 # STEP 1.5: Augment with semantic detection (Fix #5)
                 # Initialize semantic detector on first use (lazy initialization)
@@ -168,7 +410,8 @@ class AnomalyDetector:
                         f"Clause {clause_number}: Prevalence defaulted to 10% (error)"
                     )
 
-                # STEP 3: Determine if clause is suspicious (AGGRESSIVE DETECTION)
+                # STEP 3: Determine if clause is suspicious
+                # NEW: Use multi-stage results to determine if suspicious
                 is_unusual = prevalence < 0.30  # Rare clause
                 has_high_risk = any(
                     ind["severity"] == "high" for ind in detected_indicators
@@ -177,25 +420,21 @@ class AnomalyDetector:
                     ind["severity"] == "medium" for ind in detected_indicators
                 )
 
-                # NEW: More aggressive detection - flag if ANY of these are true:
-                is_suspicious = (
-                    is_unusual or  # Rare in baseline corpus
-                    has_high_risk or  # Contains high-risk patterns
-                    has_medium_risk or  # Contains medium-risk patterns
-                    len(detected_indicators) > 0  # Contains ANY risk indicator
-                )
+                # Use multi-stage detection to decide if suspicious
+                is_suspicious = multi_stage_results['proceed_to_stage2']
 
-                # Additionally: Flag long clauses with vague language
+                # Additionally: Flag long clauses with vague language (legacy check)
                 has_vague_language = False
                 if len(clause_text) > 500:
                     vague_terms = ["may", "might", "could", "at our discretion", "as we see fit", "in our sole discretion"]
                     has_vague = any(term in clause_text.lower() for term in vague_terms)
-                    if has_vague:
+                    if has_vague and not is_suspicious:
                         is_suspicious = True
                         has_vague_language = True
 
                 logger.info(
-                    f"Clause {clause_number}: Decision - is_suspicious={is_suspicious}"
+                    f"Clause {clause_number}: Decision - is_suspicious={is_suspicious} "
+                    f"(from multi-stage: {multi_stage_results['proceed_to_stage2']})"
                 )
                 logger.info(
                     f"  Reasons: unusual={is_unusual}, high_risk={has_high_risk}, "
@@ -286,6 +525,14 @@ class AnomalyDetector:
                             if prevalence < 0.30
                             else f"Found in {prevalence*100:.0f}% of similar services"
                         ),
+                        # NEW: Multi-stage detection results
+                        "stage1_detection": {
+                            "detections": multi_stage_results['detections'],
+                            "method_confidences": multi_stage_results['method_confidences'],
+                            "stage1_confidence": multi_stage_results['stage1_confidence'],
+                            "proceed_to_stage2": multi_stage_results['proceed_to_stage2'],
+                            "flags": multi_stage_results['flags']
+                        }
                     }
 
                     all_anomalies.append(anomaly)
