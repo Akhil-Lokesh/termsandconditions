@@ -26,6 +26,7 @@ from app.core.semantic_anomaly_detector import SemanticAnomalyDetector  # Stage 
 from app.core.industry_baseline_filter import IndustryBaselineFilter  # Stage 2: Industry Context
 from app.core.service_type_context_filter import ServiceTypeContextFilter  # Stage 2: Service Type
 from app.core.temporal_context_filter import TemporalContextFilter  # Stage 2: Temporal Context
+from app.core.anomaly_clusterer import AnomalyClusterer  # Stage 3: Clustering & Deduplication
 from app.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -124,6 +125,17 @@ class AnomalyDetector:
         except Exception as e:
             logger.warning(f"Failed to initialize temporal filter: {e}")
             self.temporal_filter = None
+
+        # NEW: Stage 3 Clusterer
+        try:
+            self.anomaly_clusterer = AnomalyClusterer(
+                model_name='nlpaueb/legal-bert-base-uncased',
+                duplicate_threshold=0.95
+            )
+            logger.info(f"Anomaly clusterer initialized (available: {self.anomaly_clusterer.is_available})")
+        except Exception as e:
+            logger.warning(f"Failed to initialize anomaly clusterer: {e}")
+            self.anomaly_clusterer = None
 
     async def _run_multi_stage_detection(
         self,
@@ -581,6 +593,156 @@ class AnomalyDetector:
 
         return stage2_results
 
+    def run_stage3(self, stage2_results: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Run Stage 3 clustering and deduplication.
+
+        Groups similar anomalies together and removes duplicates to reduce noise
+        and improve readability of the final report.
+
+        Args:
+            stage2_results: List of anomalies from Stage 2
+
+        Returns:
+            Dict containing:
+                - clusters: List of representative anomalies with cluster metadata
+                - noise: Individual anomalies that didn't cluster
+                - reduction_ratio: Percentage reduction from clustering
+                - original_count: Original number of anomalies
+                - final_count: Final number after clustering
+                - timing_ms: Performance metrics
+        """
+        logger.info(f"Starting Stage 3 clustering on {len(stage2_results)} anomalies")
+        stage3_start = time.time()
+
+        # Filter to only anomalies that should proceed to Stage 3
+        anomalies_for_clustering = [
+            a for a in stage2_results if a.get('proceed_to_stage3', True)
+        ]
+
+        logger.info(
+            f"Stage 3 input: {len(anomalies_for_clustering)} anomalies "
+            f"(filtered from {len(stage2_results)})"
+        )
+
+        # Check if clusterer is available
+        if not self.anomaly_clusterer or not self.anomaly_clusterer.is_available:
+            logger.warning("Anomaly clusterer not available, proceeding without clustering")
+            return {
+                'clusters': [
+                    {
+                        'cluster_id': f'no_clustering_{i}',
+                        'representative_anomaly': anomaly,
+                        'member_anomalies': [anomaly],
+                        'cluster_size': 1,
+                        'is_noise': True
+                    }
+                    for i, anomaly in enumerate(anomalies_for_clustering)
+                ],
+                'noise': [],
+                'reduction_ratio': 0.0,
+                'original_count': len(anomalies_for_clustering),
+                'final_count': len(anomalies_for_clustering),
+                'timing_ms': {'total': (time.time() - stage3_start) * 1000},
+                'clusterer_available': False
+            }
+
+        try:
+            # Run clustering
+            clustering_result = self.anomaly_clusterer.cluster_anomalies(
+                anomalies_for_clustering
+            )
+
+            # Transform clusters into final format
+            clusters = []
+            for cluster in clustering_result['clusters']:
+                representative = cluster['representative_anomaly']
+
+                # Add cluster metadata to representative
+                representative_with_cluster = {
+                    **representative,
+                    'cluster_metadata': {
+                        'cluster_id': cluster['cluster_id'],
+                        'cluster_size': cluster['cluster_size'],
+                        'section_references': cluster['section_references'],
+                        'consolidated_text': cluster['consolidated_text'],
+                        'average_confidence': cluster.get('average_confidence', 0.0),
+                        'overall_severity': cluster.get('overall_severity', representative.get('severity', 'medium')),
+                        'risk_categories': cluster.get('risk_categories', [representative.get('risk_category', 'other')]),
+                        'member_clause_numbers': [
+                            m.get('clause_number', 'unknown') for m in cluster['member_anomalies']
+                        ]
+                    },
+                    'is_cluster_representative': True
+                }
+
+                clusters.append({
+                    'cluster_id': cluster['cluster_id'],
+                    'representative_anomaly': representative_with_cluster,
+                    'member_anomalies': cluster['member_anomalies'],
+                    'cluster_size': cluster['cluster_size']
+                })
+
+            # Process noise
+            noise = clustering_result['noise']
+
+            # Mark noise anomalies
+            for anomaly in noise:
+                anomaly['is_noise'] = True
+                anomaly['cluster_metadata'] = None
+
+            # Calculate metrics
+            original_count = clustering_result['original_count']
+            final_count = clustering_result['final_count']
+            reduction_ratio = clustering_result['reduction_ratio']
+
+            stage3_duration = (time.time() - stage3_start) * 1000
+
+            logger.info(
+                f"Stage 3 complete: Reduced {original_count} anomalies to {final_count} "
+                f"({len(clusters)} clusters + {len(noise)} noise) - "
+                f"{reduction_ratio:.1%} reduction in {stage3_duration:.2f}ms"
+            )
+
+            # Log cluster details
+            if clusters:
+                for cluster in clusters[:5]:  # Log first 5 clusters
+                    logger.info(
+                        f"  Cluster {cluster['cluster_id']}: {cluster['cluster_size']} members, "
+                        f"severity={cluster['representative_anomaly']['cluster_metadata']['overall_severity']}"
+                    )
+
+            return {
+                'clusters': clusters,
+                'noise': noise,
+                'reduction_ratio': reduction_ratio,
+                'original_count': original_count,
+                'final_count': final_count,
+                'n_clusters': len(clusters),
+                'n_noise': len(noise),
+                'timing_ms': clustering_result.get('timing_ms', {}),
+                'clusterer_available': True,
+                'proceed_to_stage4': True
+            }
+
+        except Exception as e:
+            logger.error(f"Stage 3 clustering failed: {e}", exc_info=True)
+
+            # Graceful fallback: treat all anomalies as noise
+            logger.warning("Falling back to no clustering due to error")
+
+            return {
+                'clusters': [],
+                'noise': anomalies_for_clustering,
+                'reduction_ratio': 0.0,
+                'original_count': len(anomalies_for_clustering),
+                'final_count': len(anomalies_for_clustering),
+                'timing_ms': {'total': (time.time() - stage3_start) * 1000},
+                'clusterer_available': False,
+                'error': str(e),
+                'proceed_to_stage4': True
+            }
+
     async def detect_anomalies(
         self,
         document_id: str,
@@ -598,7 +760,8 @@ class AnomalyDetector:
         Multi-stage pipeline:
         - Stage 1: Pattern-based, Semantic, and Statistical detection
         - Stage 2: Industry baseline, Service type context, Temporal filtering
-        - Stage 3: Compound risk detection and final reporting
+        - Stage 3: Clustering and deduplication to reduce noise
+        - Stage 4: Compound risk detection and final reporting
 
         Args:
             document_id: Document identifier
@@ -879,6 +1042,38 @@ class AnomalyDetector:
         logger.info(
             f"Stage 2 complete: {sum(1 for a in all_anomalies if a.get('proceed_to_stage3', False))} "
             f"anomalies proceeding to Stage 3"
+        )
+
+        # STAGE 3: Apply clustering and deduplication
+        stage3_result = self.run_stage3(all_anomalies)
+
+        # Flatten clusters and noise back into anomaly list for backward compatibility
+        # Keep Stage 3 metadata attached to anomalies
+        clustered_anomalies = []
+
+        # Add representative anomalies from clusters
+        for cluster in stage3_result['clusters']:
+            clustered_anomalies.append(cluster['representative_anomaly'])
+
+        # Add noise anomalies
+        clustered_anomalies.extend(stage3_result['noise'])
+
+        # Store Stage 3 results for document-level reporting
+        for anomaly in clustered_anomalies:
+            anomaly['_stage3_result'] = {
+                'reduction_ratio': stage3_result['reduction_ratio'],
+                'original_count': stage3_result['original_count'],
+                'final_count': stage3_result['final_count'],
+                'n_clusters': stage3_result.get('n_clusters', 0),
+                'n_noise': stage3_result.get('n_noise', 0)
+            }
+
+        # Replace all_anomalies with clustered results
+        all_anomalies = clustered_anomalies
+
+        logger.info(
+            f"Stage 3 complete: Reduced from {stage3_result['original_count']} to "
+            f"{stage3_result['final_count']} anomalies ({stage3_result['reduction_ratio']:.1%} reduction)"
         )
 
         # STEP 6: Detect compound risks (Fix #6)
