@@ -22,6 +22,192 @@ FastAPI-based backend for the AI-Powered Terms & Conditions Analysis System.
 - **Authentication**: python-jose, passlib
 - **PDF Processing**: PyPDF2, pdfplumber
 - **Testing**: pytest, pytest-asyncio
+- **ML/AI**: scikit-learn, sentence-transformers (legal-BERT)
+
+## Anomaly Detection System
+
+The backend includes a sophisticated 6-stage anomaly detection pipeline that identifies problematic clauses in Terms & Conditions documents while minimizing false positives and preventing alert fatigue.
+
+### Pipeline Overview
+
+```
+Stage 1: Multi-Method Detection
+    ├─ Pattern-Based (40% weight)
+    ├─ Semantic Similarity (35% weight)
+    └─ Statistical Outlier (25% weight)
+         ↓
+Stage 2: Context Filtering
+    ├─ Industry-Specific Filter
+    ├─ Service Type Filter
+    └─ Temporal Filter
+         ↓
+Stage 3: Clustering & Deduplication
+    └─ ML-Powered Clustering (legal-BERT)
+         ↓
+Stage 4: Compound Risk Detection
+    ├─ Privacy Erosion (3+ privacy violations)
+    ├─ Lock-in (subscription + fees + contract)
+    ├─ Legal Shield (arbitration + liability + class action)
+    ├─ Control Imbalance (unilateral powers)
+    ├─ Children Exploitation (COPPA violations)
+    └─ Dark Patterns (manipulative tactics)
+         ↓
+Stage 5: Confidence Calibration
+    ├─ Isotonic Regression
+    ├─ 3 Tiers: HIGH/MODERATE/LOW
+    └─ Active Learning (retrains every 100 samples)
+         ↓
+Stage 6: Alert Ranking & Budget
+    ├─ Multi-Factor Scoring
+    └─ Max 10 alerts (target: 3-5)
+         ↓
+    Final Report
+```
+
+### Key Features
+
+- **High Recall**: ≥95% detection rate on known anomalies
+- **False Positive Reduction**: ≥70% reduction through context filtering
+- **Well-Calibrated**: Expected Calibration Error (ECE) <0.05
+- **Alert Budget**: MAX_ALERTS=10, prevents alert fatigue
+- **Active Learning**: Continuous improvement through user feedback
+- **Overall Risk Score**: 1-10 scale based on severity and confidence
+
+### Core Components
+
+```
+backend/app/core/
+├── anomaly_detector.py                 # Main pipeline orchestrator
+├── confidence_calibrator.py            # Stage 5: Isotonic regression
+├── active_learning_manager.py          # Stage 5: Feedback loop
+├── alert_ranker.py                     # Stage 6: Ranking & budget
+├── anomaly_detection_monitor.py        # Performance monitoring
+├── filters/
+│   ├── industry_filter.py             # Stage 2: Industry filtering
+│   ├── service_type_filter.py         # Stage 2: Service type filtering
+│   └── temporal_filter.py             # Stage 2: Change detection
+├── clustering/
+│   └── anomaly_clusterer.py           # Stage 3: ML clustering
+└── compound/
+    └── compound_risk_detector.py       # Stage 4: Pattern detection
+```
+
+### Performance Targets
+
+| Metric | Target | Stage |
+|--------|--------|-------|
+| Recall | ≥ 95% | Stage 1 |
+| FP Reduction | ≥ 70% | Stage 2 |
+| Noise Reduction | 50-70% | Stage 3 |
+| ECE | < 0.05 | Stage 5 |
+| Max Alerts | ≤ 10 | Stage 6 |
+| Processing Time | < 30s | Full Pipeline |
+
+### API Endpoints
+
+**GET /api/v1/anomalies/report/{document_id}**
+- Complete 6-stage pipeline analysis
+- Returns overall risk score (1-10)
+- Categorized alerts (HIGH/MEDIUM/LOW)
+- Compound risk patterns
+- Pipeline performance metrics
+
+**POST /api/v1/anomalies/{anomaly_id}/feedback**
+- Collect user feedback for active learning
+- Actions: helpful, acted_on, dismiss, not_applicable
+- Automatic calibrator retraining after 100 samples
+
+**GET /api/v1/anomalies/performance**
+- System performance metrics
+- False positive rate, dismissal rate
+- Expected Calibration Error (ECE)
+- Pipeline health status
+
+### Testing
+
+Comprehensive test suite with 1,100+ tests:
+
+```bash
+# Run all anomaly detection tests
+pytest backend/tests/test_anomaly_detection_pipeline.py -v
+
+# Run specific stage tests
+pytest backend/tests/test_confidence_calibrator.py -v
+pytest backend/tests/test_active_learning_manager.py -v
+pytest backend/tests/test_alert_ranker.py -v
+
+# Run integration tests only
+pytest -m integration -v
+
+# Run fast tests only (exclude slow)
+pytest -m "not slow" -v
+```
+
+### Documentation
+
+- **[ANOMALY_DETECTION.md](../docs/ANOMALY_DETECTION.md)** - Complete technical specification
+- **[DEPLOYMENT_CHECKLIST.md](../docs/DEPLOYMENT_CHECKLIST.md)** - Pre-deployment requirements
+- **[ARCHITECTURE.md](../docs/ARCHITECTURE.md)** - System architecture overview
+
+### Configuration
+
+Key environment variables:
+
+```bash
+# Anomaly Detection
+ANOMALY_DETECTION_ENABLED=true
+MAX_ALERTS=10
+TARGET_ALERTS=5
+RETRAIN_AFTER_SAMPLES=100
+DISMISSAL_THRESHOLD=0.20
+
+# Stage Weights
+PATTERN_WEIGHT=0.40
+SEMANTIC_WEIGHT=0.35
+STATISTICAL_WEIGHT=0.25
+
+# Clustering
+CLUSTERING_SIMILARITY_THRESHOLD=0.85
+```
+
+See `config/anomaly_detection.yaml` for full configuration options.
+
+### Monitoring
+
+Daily automated monitoring runs at 1 AM UTC:
+
+```bash
+# View monitoring service status
+systemctl status anomaly-monitoring
+
+# Check daily metrics manually
+python scripts/daily_monitoring.py
+
+# View performance dashboard
+# GET /api/v1/anomalies/performance
+```
+
+### Troubleshooting
+
+**High False Positive Rate** (dismissal rate > 25%):
+```bash
+python scripts/analyze_false_positives.py --last-n-days 7
+python scripts/retrain_calibrator.py --force
+```
+
+**Low Recall** (missing anomalies):
+```bash
+python scripts/analyze_recall.py --test-set data/test_sets/labeled_anomalies.json
+# Review pattern library and adjust thresholds
+```
+
+**Slow Processing** (> 30 seconds):
+```bash
+python scripts/profile_pipeline.py --document-id abc123 --detailed
+# Enable caching, batch processing, or use smaller model
+```
+
+See [ANOMALY_DETECTION.md](../docs/ANOMALY_DETECTION.md#troubleshooting) for detailed troubleshooting guide.
 
 ## Quick Start
 
