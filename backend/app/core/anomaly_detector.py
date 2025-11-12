@@ -11,6 +11,7 @@ Multi-Stage Detection Pipeline:
 - Stage 3: Clustering & Deduplication (ML-powered with legal-BERT)
 - Stage 4: Compound Risk Detection (6 systemic patterns)
 - Stage 5: Confidence Calibration (Isotonic regression with active learning)
+- Stage 6: Alert Ranking & Budget (MAX_ALERTS=10, prevents alert fatigue)
 """
 
 import time
@@ -32,6 +33,7 @@ from app.core.temporal_context_filter import TemporalContextFilter  # Stage 2: T
 from app.core.anomaly_clusterer import AnomalyClusterer  # Stage 3: Clustering & Deduplication
 from app.core.confidence_calibrator import ConfidenceCalibrator  # Stage 5: Confidence Calibration
 from app.core.active_learning_manager import ActiveLearningManager  # Stage 5: Active Learning
+from app.core.alert_ranker import AlertRanker  # Stage 6: Alert Ranking & Budget
 from app.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -151,6 +153,15 @@ class AnomalyDetector:
             logger.warning(f"Failed to initialize Stage 5 components: {e}")
             self.confidence_calibrator = None
             self.active_learning = None
+
+        # NEW: Stage 6 Alert Ranking & Budget Management
+        try:
+            # user_preferences can be set later via set_user_preferences()
+            self.alert_ranker = AlertRanker()
+            logger.info("Alert ranker initialized")
+        except Exception as e:
+            logger.warning(f"Failed to initialize alert ranker: {e}")
+            self.alert_ranker = None
 
     async def _run_multi_stage_detection(
         self,
@@ -1143,6 +1154,191 @@ class AnomalyDetector:
             logger.error(f"Failed to get uncertainty samples: {e}")
             return []
 
+    def set_user_preferences(self, user_preferences: Dict[str, Any]) -> None:
+        """
+        Set user preferences for alert ranking personalization.
+
+        Args:
+            user_preferences: Dict with user preferences
+                Example:
+                {
+                    'priority_categories': ['data_collection', 'liability'],
+                    'concern_level': 'high',  # 'low', 'medium', 'high'
+                    'show_all': False
+                }
+        """
+        if self.alert_ranker:
+            self.alert_ranker.user_preferences = user_preferences
+            logger.info(f"User preferences set: {user_preferences}")
+        else:
+            logger.warning("Alert ranker not initialized, cannot set preferences")
+
+    def run_stage6(
+        self,
+        stage5_anomalies: List[Dict[str, Any]],
+        compound_risks: Optional[List[Dict[str, Any]]] = None,
+        document_context: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Run Stage 6 alert ranking and budget management.
+
+        Ranks anomalies by importance, enforces alert budget to prevent
+        fatigue, and categorizes alerts for optimal user presentation.
+
+        Args:
+            stage5_anomalies: List of calibrated anomalies from Stage 5
+            compound_risks: Optional list of compound risks from Stage 4
+            document_context: Optional document context for industry-specific ranking
+
+        Returns:
+            Dict containing:
+                - high_severity: List of high-priority alerts
+                - medium_severity: List of medium-priority alerts
+                - low_severity: List of low-priority alerts
+                - suppressed: List of suppressed alerts
+                - total_detected: Total anomalies detected
+                - total_shown: Total alerts shown
+                - ranking_metadata: Ranking statistics
+                - timing_ms: Performance metrics
+        """
+        logger.info(f"Starting Stage 6 alert ranking on {len(stage5_anomalies)} anomalies")
+        stage6_start = time.time()
+
+        # Check if ranker is available
+        if not self.alert_ranker:
+            logger.warning("Alert ranker not available, returning all anomalies")
+            return {
+                'high_severity': stage5_anomalies,
+                'medium_severity': [],
+                'low_severity': [],
+                'suppressed': [],
+                'total_detected': len(stage5_anomalies),
+                'total_shown': len(stage5_anomalies),
+                'ranking_metadata': {},
+                'timing_ms': {'total': (time.time() - stage6_start) * 1000},
+                'stage6_complete': False,
+                'warning': 'Alert ranker not initialized'
+            }
+
+        try:
+            # Run ranking and filtering
+            ranking_result = self.alert_ranker.rank_and_filter(
+                calibrated_anomalies=stage5_anomalies,
+                compound_risks=compound_risks,
+                document_context=document_context
+            )
+
+            stage6_duration = (time.time() - stage6_start) * 1000
+
+            # Log suppression decisions
+            if ranking_result['suppressed']:
+                logger.info(
+                    f"Suppressed {len(ranking_result['suppressed'])} low-priority alerts "
+                    f"to enforce alert budget"
+                )
+                for suppressed in ranking_result['suppressed'][:3]:  # Log first 3
+                    logger.debug(
+                        f"  Suppressed: clause {suppressed.get('clause_number', 'unknown')}, "
+                        f"score={suppressed.get('ranking_score', 0):.2f}"
+                    )
+
+            logger.info(
+                f"Stage 6 complete: {ranking_result['total_shown']}/{ranking_result['total_detected']} "
+                f"alerts shown ({len(ranking_result['high_severity'])} HIGH, "
+                f"{len(ranking_result['medium_severity'])} MEDIUM, "
+                f"{len(ranking_result['low_severity'])} LOW), "
+                f"took {stage6_duration:.2f}ms"
+            )
+
+            return {
+                **ranking_result,
+                'timing_ms': {'total': stage6_duration},
+                'stage6_complete': True
+            }
+
+        except Exception as e:
+            logger.error(f"Stage 6 ranking failed: {e}", exc_info=True)
+
+            # Graceful fallback: return all anomalies unranked
+            return {
+                'high_severity': stage5_anomalies,
+                'medium_severity': [],
+                'low_severity': [],
+                'suppressed': [],
+                'total_detected': len(stage5_anomalies),
+                'total_shown': len(stage5_anomalies),
+                'ranking_metadata': {},
+                'timing_ms': {'total': (time.time() - stage6_start) * 1000},
+                'stage6_complete': False,
+                'error': str(e)
+            }
+
+    def _calculate_overall_risk_score(
+        self,
+        high_severity: List[Dict[str, Any]],
+        medium_severity: List[Dict[str, Any]],
+        low_severity: List[Dict[str, Any]],
+        compound_risks: Optional[List[Dict[str, Any]]] = None
+    ) -> float:
+        """
+        Calculate overall document risk score on 1-10 scale.
+
+        Factors:
+        - Number of HIGH severity alerts (weight: 3.0)
+        - Number of MEDIUM severity alerts (weight: 2.0)
+        - Number of LOW severity alerts (weight: 1.0)
+        - Number of compound risks (weight: 2.5)
+        - Average calibrated confidence
+
+        Args:
+            high_severity: High severity alerts
+            medium_severity: Medium severity alerts
+            low_severity: Low severity alerts
+            compound_risks: Optional compound risks
+
+        Returns:
+            Risk score between 1.0 and 10.0
+        """
+        # Count alerts by severity
+        high_count = len(high_severity)
+        medium_count = len(medium_severity)
+        low_count = len(low_severity)
+        compound_count = len(compound_risks) if compound_risks else 0
+
+        # Weighted severity score
+        severity_score = (
+            (high_count * 3.0) +
+            (medium_count * 2.0) +
+            (low_count * 1.0) +
+            (compound_count * 2.5)
+        )
+
+        # Cap at 30 for scaling
+        severity_score = min(severity_score, 30.0)
+
+        # Average confidence across all alerts
+        all_alerts = high_severity + medium_severity + low_severity
+        if all_alerts:
+            confidences = [
+                a.get('confidence_calibration', {}).get('calibrated_confidence', 0.5)
+                for a in all_alerts
+            ]
+            avg_confidence = sum(confidences) / len(confidences)
+        else:
+            avg_confidence = 0.5
+
+        # Base score from severity (0-10 scale)
+        base_score = (severity_score / 30.0) * 10.0
+
+        # Adjust by confidence (higher confidence = higher risk)
+        confidence_adjustment = (avg_confidence - 0.5) * 2.0  # -1 to +1
+
+        # Final score
+        final_score = base_score + confidence_adjustment
+
+        # Clamp to 1-10 range
+        return max(1.0, min(final_score, 10.0))
+
     async def detect_anomalies(
         self,
         document_id: str,
@@ -1163,6 +1359,7 @@ class AnomalyDetector:
         - Stage 3: Clustering and deduplication to reduce noise
         - Stage 4: Compound risk detection for systemic patterns
         - Stage 5: Confidence calibration with active learning
+        - Stage 6: Alert ranking and budget management
 
         Args:
             document_id: Document identifier
@@ -1177,11 +1374,21 @@ class AnomalyDetector:
                 - is_change: Whether this is a change from previous version
 
         Returns:
-            List of detected anomalies with full Stage 1 and Stage 2 details
+            Dict with complete anomaly analysis report including:
+                - document_id: Document identifier
+                - high_severity_alerts: High-priority alerts
+                - medium_severity_alerts: Medium-priority alerts
+                - low_severity_alerts: Low-priority alerts
+                - overall_risk_score: Risk score (1-10)
+                - compound_risks: Detected compound risks
+                - pipeline_performance: Performance metrics for all stages
         """
         logger.info(f"Starting anomaly detection for document {document_id}")
         logger.info(f"Company: {company_name}, Service Type: {service_type}")
         logger.info(f"Total sections to analyze: {len(sections)}")
+
+        # Track pipeline performance
+        pipeline_start = time.time()
 
         all_anomalies = []
         total_clauses = 0
@@ -1539,7 +1746,79 @@ class AnomalyDetector:
                 f"LOW={summary.get('low_confidence_count', 0)}"
             )
 
-        return all_anomalies
+        # STAGE 6: Alert Ranking & Budget Management
+        stage6_result = self.run_stage6(
+            stage5_anomalies=all_anomalies,
+            compound_risks=stage4_result.get('compound_risks', []),
+            document_context=document_context
+        )
+
+        # Calculate overall risk score
+        overall_risk_score = self._calculate_overall_risk_score(
+            high_severity=stage6_result['high_severity'],
+            medium_severity=stage6_result['medium_severity'],
+            low_severity=stage6_result['low_severity'],
+            compound_risks=stage4_result.get('compound_risks', [])
+        )
+
+        logger.info(
+            f"Stage 6 complete: Alert ranking finished, "
+            f"overall risk score: {overall_risk_score:.1f}/10"
+        )
+
+        # Calculate total pipeline duration
+        pipeline_end = time.time()
+        total_pipeline_duration = (pipeline_end - pipeline_start) * 1000
+
+        # Build comprehensive pipeline performance metrics
+        # Calculate stage1_initial before filtering
+        stage1_initial = sum(1 for a in all_anomalies if a.get('stage1_detection'))
+
+        pipeline_performance = {
+            'stage1_detections': stage1_initial,
+            'stage2_filtered': sum(1 for a in all_anomalies if a.get('proceed_to_stage3', False)),
+            'stage3_clustered': stage3_result.get('final_count', 0),
+            'stage4_compounds': len(stage4_result.get('compound_risks', [])),
+            'stage5_calibrated': stage5_result.get('anomalies_calibrated', 0),
+            'stage6_ranked': stage6_result.get('total_shown', 0),
+            'total_clauses_analyzed': total_clauses,
+            'total_processing_time_ms': round(total_pipeline_duration, 2)
+        }
+
+        # Build final comprehensive report
+        from datetime import datetime
+        final_report = {
+            'document_id': document_id,
+            'company_name': company_name,
+            'analysis_date': datetime.utcnow().isoformat(),
+            'overall_risk_score': round(overall_risk_score, 1),
+            'high_severity_alerts': stage6_result['high_severity'],
+            'medium_severity_alerts': stage6_result['medium_severity'],
+            'low_severity_alerts': stage6_result['low_severity'],
+            'suppressed_alerts_count': len(stage6_result['suppressed']),
+            'total_anomalies_detected': stage6_result['total_detected'],
+            'total_alerts_shown': stage6_result['total_shown'],
+            'compound_risks': stage4_result.get('compound_risks', []),
+            'ranking_metadata': stage6_result.get('ranking_metadata', {}),
+            'pipeline_performance': pipeline_performance
+        }
+
+        # Log pipeline summary
+        logger.info("=" * 60)
+        logger.info("ANOMALY DETECTION PIPELINE COMPLETE")
+        logger.info("=" * 60)
+        logger.info(f"Document: {document_id}")
+        logger.info(f"Overall Risk Score: {overall_risk_score:.1f}/10")
+        logger.info(f"Alerts: {stage6_result['total_shown']}/{stage6_result['total_detected']} shown")
+        logger.info(f"  HIGH: {len(stage6_result['high_severity'])}")
+        logger.info(f"  MEDIUM: {len(stage6_result['medium_severity'])}")
+        logger.info(f"  LOW: {len(stage6_result['low_severity'])}")
+        logger.info(f"  SUPPRESSED: {len(stage6_result['suppressed'])}")
+        logger.info(f"Compound Risks: {len(stage4_result.get('compound_risks', []))}")
+        logger.info(f"Total Processing Time: {total_pipeline_duration:.2f}ms")
+        logger.info("=" * 60)
+
+        return final_report
 
     def _generate_fallback_explanation(
         self, detected_indicators: List[Dict], prevalence: float
