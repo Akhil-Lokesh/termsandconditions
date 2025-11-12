@@ -743,6 +743,120 @@ class AnomalyDetector:
                 'proceed_to_stage4': True
             }
 
+    def run_stage4(
+        self,
+        stage3_results: List[Dict[str, Any]],
+        full_clauses: Optional[List[Dict[str, Any]]] = None
+    ) -> Dict[str, Any]:
+        """
+        Run Stage 4 compound risk detection.
+
+        Identifies systemic risks that arise from combinations of individual anomalies.
+        These compound patterns create risks that are worse than the sum of their parts.
+
+        Args:
+            stage3_results: List of anomalies from Stage 3 (clustered)
+            full_clauses: Optional list of all document clauses for additional context
+
+        Returns:
+            Dict containing:
+                - compound_risks: List of detected compound risk patterns
+                - compound_risk_score: Overall compound risk score
+                - patterns_detected: List of pattern names
+                - timing_ms: Performance metrics
+        """
+        logger.info(f"Starting Stage 4 compound risk detection on {len(stage3_results)} anomalies")
+        stage4_start = time.time()
+
+        try:
+            # Detect compound risks
+            compound_risks = self.compound_detector.detect_compound_risks(
+                anomalies=stage3_results,
+                full_clauses=full_clauses
+            )
+
+            if compound_risks:
+                logger.info(
+                    f"Detected {len(compound_risks)} compound risk patterns: "
+                    f"{[r['name'] for r in compound_risks]}"
+                )
+
+                # Add compound risks to each related anomaly for context
+                for compound_risk in compound_risks:
+                    # Get component indicators for this pattern
+                    required_components = set(compound_risk.get("required_components", []))
+                    matched_required = set(compound_risk.get("matched_required", []))
+                    matched_optional = set(compound_risk.get("matched_optional", []))
+                    all_matched = matched_required.union(matched_optional)
+
+                    # Find anomalies involved in this compound risk
+                    for anomaly in stage3_results:
+                        anomaly_indicators = {
+                            ind["name"] for ind in anomaly.get("detected_indicators", [])
+                        }
+
+                        if anomaly_indicators.intersection(all_matched):
+                            # This anomaly is part of the compound risk
+                            if "compound_risks" not in anomaly:
+                                anomaly["compound_risks"] = []
+
+                            anomaly["compound_risks"].append({
+                                "pattern": compound_risk["compound_risk_type"],
+                                "name": compound_risk["name"],
+                                "compound_severity": compound_risk["compound_severity"],
+                                "base_severity": compound_risk["base_severity"],
+                                "risk_multiplier": compound_risk["risk_multiplier"],
+                                "description": compound_risk["description"],
+                                "confidence": compound_risk["confidence"],
+                                "combined_score": compound_risk["combined_score"]
+                            })
+
+                            logger.debug(
+                                f"Added compound risk '{compound_risk['name']}' to "
+                                f"anomaly {anomaly.get('clause_number')}"
+                            )
+            else:
+                logger.info("No compound risk patterns detected")
+
+            # Calculate overall compound risk score
+            compound_risk_assessment = self.compound_detector.calculate_compound_risk_score(
+                compound_risks
+            )
+
+            stage4_duration = (time.time() - stage4_start) * 1000
+
+            logger.info(
+                f"Stage 4 complete: {len(compound_risks)} patterns detected, "
+                f"compound risk score: {compound_risk_assessment['compound_risk_score']:.1f}/10 "
+                f"({compound_risk_assessment['compound_risk_level']}), "
+                f"took {stage4_duration:.2f}ms"
+            )
+
+            return {
+                'compound_risks': compound_risks,
+                'compound_risk_assessment': compound_risk_assessment,
+                'patterns_detected': [r["compound_risk_type"] for r in compound_risks],
+                'timing_ms': {'total': stage4_duration},
+                'stage4_complete': True
+            }
+
+        except Exception as e:
+            logger.error(f"Stage 4 compound risk detection failed: {e}", exc_info=True)
+
+            # Graceful fallback
+            return {
+                'compound_risks': [],
+                'compound_risk_assessment': {
+                    'compound_risk_score': 0.0,
+                    'compound_risk_level': 'None',
+                    'compound_risk_count': 0
+                },
+                'patterns_detected': [],
+                'timing_ms': {'total': (time.time() - stage4_start) * 1000},
+                'stage4_complete': False,
+                'error': str(e)
+            }
+
     async def detect_anomalies(
         self,
         document_id: str,
@@ -784,6 +898,7 @@ class AnomalyDetector:
 
         all_anomalies = []
         total_clauses = 0
+        full_clauses = []  # Collect all clauses for Stage 4
 
         for section in sections:
             section_name = section.get("section_name", "Unknown Section")
@@ -814,6 +929,14 @@ class AnomalyDetector:
                     clause_dict=clause_dict,
                     service_type=service_type
                 )
+
+                # Collect full clauses for Stage 4 compound risk detection
+                full_clauses.append({
+                    'text': clause_text,
+                    'section': section_name,
+                    'clause_number': clause_number,
+                    'stage1_results': multi_stage_results
+                })
 
                 # Extract pattern-based indicators for backward compatibility
                 pattern_detection = next(
@@ -1076,47 +1199,30 @@ class AnomalyDetector:
             f"{stage3_result['final_count']} anomalies ({stage3_result['reduction_ratio']:.1%} reduction)"
         )
 
-        # STEP 6: Detect compound risks (Fix #6)
-        compound_risks = self.compound_detector.detect_compound_risks(all_anomalies)
+        # STAGE 4: Detect compound risks using enhanced detector
+        stage4_result = self.run_stage4(
+            stage3_results=all_anomalies,
+            full_clauses=full_clauses
+        )
 
-        if compound_risks:
-            logger.info(f"Detected {len(compound_risks)} compound risk patterns")
+        # Store Stage 4 results for document-level reporting
+        for anomaly in all_anomalies:
+            anomaly['_stage4_result'] = {
+                'compound_risk_score': stage4_result['compound_risk_assessment']['compound_risk_score'],
+                'compound_risk_level': stage4_result['compound_risk_assessment']['compound_risk_level'],
+                'patterns_detected': stage4_result['patterns_detected']
+            }
+            # Compound risks already added to individual anomalies by run_stage4()
 
-            # Add compound risks to each related anomaly for context
-            for compound_risk in compound_risks:
-                pattern_name = compound_risk["compound_risk_type"]
-
-                # Find anomalies involved in this compound risk
-                for anomaly in all_anomalies:
-                    anomaly_indicators = {
-                        ind["name"] for ind in anomaly.get("detected_indicators", [])
-                    }
-
-                    required_indicators = set(compound_risk["required_indicators"])
-                    optional_indicators = set(
-                        compound_risk.get("matched_optional_indicators", [])
-                    )
-                    all_relevant = required_indicators.union(optional_indicators)
-
-                    if anomaly_indicators.intersection(all_relevant):
-                        # This anomaly is part of the compound risk
-                        if "compound_risks" not in anomaly:
-                            anomaly["compound_risks"] = []
-
-                        anomaly["compound_risks"].append(
-                            {
-                                "pattern": pattern_name,
-                                "severity": compound_risk["severity"],
-                                "description": compound_risk["description"],
-                                "confidence": compound_risk["confidence"],
-                            }
-                        )
-
-        # Store compound risks for document-level reporting
-        # (Can be accessed separately via document.compound_risks)
+        # Store compound risks summary for document-level reporting
         for anomaly in all_anomalies:
             if not hasattr(anomaly, "_compound_risks_summary"):
-                anomaly["_compound_risks_summary"] = compound_risks
+                anomaly["_compound_risks_summary"] = stage4_result['compound_risks']
+
+        logger.info(
+            f"Stage 4 complete: {len(stage4_result['compound_risks'])} compound patterns detected, "
+            f"risk level: {stage4_result['compound_risk_assessment']['compound_risk_level']}"
+        )
 
         return all_anomalies
 
