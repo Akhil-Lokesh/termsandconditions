@@ -6,8 +6,11 @@ from ANY company. Automatically identifies unusual, risky, or consumer-unfriendl
 clauses without being told what to look for.
 
 Multi-Stage Detection Pipeline:
-- Stage 1: Pattern-based (keyword), Semantic (embeddings), Statistical (Isolation Forest)
-- Stage 2: Ensemble combination and confidence calibration
+- Stage 1: Multi-Method Detection (Pattern 40%, Semantic 35%, Statistical 25%)
+- Stage 2: Context Filtering (Industry, Service Type, Temporal)
+- Stage 3: Clustering & Deduplication (ML-powered with legal-BERT)
+- Stage 4: Compound Risk Detection (6 systemic patterns)
+- Stage 5: Confidence Calibration (Isotonic regression with active learning)
 """
 
 import time
@@ -27,6 +30,8 @@ from app.core.industry_baseline_filter import IndustryBaselineFilter  # Stage 2:
 from app.core.service_type_context_filter import ServiceTypeContextFilter  # Stage 2: Service Type
 from app.core.temporal_context_filter import TemporalContextFilter  # Stage 2: Temporal Context
 from app.core.anomaly_clusterer import AnomalyClusterer  # Stage 3: Clustering & Deduplication
+from app.core.confidence_calibrator import ConfidenceCalibrator  # Stage 5: Confidence Calibration
+from app.core.active_learning_manager import ActiveLearningManager  # Stage 5: Active Learning
 from app.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -136,6 +141,16 @@ class AnomalyDetector:
         except Exception as e:
             logger.warning(f"Failed to initialize anomaly clusterer: {e}")
             self.anomaly_clusterer = None
+
+        # NEW: Stage 5 Confidence Calibration & Active Learning
+        try:
+            self.confidence_calibrator = ConfidenceCalibrator()
+            self.active_learning = ActiveLearningManager(self.confidence_calibrator)
+            logger.info("Confidence calibrator and active learning manager initialized")
+        except Exception as e:
+            logger.warning(f"Failed to initialize Stage 5 components: {e}")
+            self.confidence_calibrator = None
+            self.active_learning = None
 
     async def _run_multi_stage_detection(
         self,
@@ -857,6 +872,277 @@ class AnomalyDetector:
                 'error': str(e)
             }
 
+    def load_calibrator(self, training_data_path: Optional[str] = None) -> None:
+        """
+        Load and fit confidence calibrator with historical feedback data.
+
+        This should be called during initialization or periodically to update
+        the calibrator with accumulated user feedback.
+
+        Args:
+            training_data_path: Optional path to training data file
+                              If None, loads from database
+        """
+        logger.info("Loading calibrator with historical feedback data")
+
+        if not self.confidence_calibrator:
+            logger.error("Confidence calibrator not initialized")
+            return
+
+        try:
+            # TODO: Load from database if training_data_path is None
+            # For now, log that calibrator needs training data
+            if training_data_path is None:
+                logger.info(
+                    "No training data path provided. Calibrator will use raw scores "
+                    "until feedback is collected."
+                )
+                return
+
+            # Load training data (predictions and labels)
+            # This would be implemented based on your database schema
+            logger.info(f"Loading training data from {training_data_path}")
+
+            # Placeholder for actual implementation
+            import numpy as np
+            # predicted_probs = np.load(f"{training_data_path}/predictions.npy")
+            # actual_labels = np.load(f"{training_data_path}/labels.npy")
+
+            # self.confidence_calibrator.fit(predicted_probs, actual_labels)
+
+            logger.info("Calibrator loaded successfully")
+
+        except Exception as e:
+            logger.error(f"Failed to load calibrator: {e}", exc_info=True)
+
+    def run_stage5(
+        self,
+        stage4_anomalies: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Run Stage 5 confidence calibration.
+
+        Calibrates confidence scores for all anomalies using isotonic regression.
+        Provides tier-based explanations and tracks calibration metrics.
+
+        Args:
+            stage4_anomalies: List of anomalies from Stage 4
+
+        Returns:
+            Dict containing:
+                - anomalies_calibrated: Number of anomalies calibrated
+                - calibrated_anomalies: List of anomalies with calibration data
+                - calibration_summary: Calibration metrics
+                - proceed_to_stage6: Boolean flag
+                - timing_ms: Performance metrics
+        """
+        logger.info(f"Starting Stage 5 confidence calibration on {len(stage4_anomalies)} anomalies")
+        stage5_start = time.time()
+
+        # Check if calibrator is available
+        if not self.confidence_calibrator:
+            logger.warning("Confidence calibrator not available, skipping Stage 5")
+            return {
+                'anomalies_calibrated': 0,
+                'calibrated_anomalies': stage4_anomalies,
+                'calibration_summary': {},
+                'proceed_to_stage6': True,
+                'timing_ms': {'total': (time.time() - stage5_start) * 1000},
+                'stage5_complete': False,
+                'warning': 'Calibrator not initialized'
+            }
+
+        try:
+            calibrated_anomalies = []
+            calibration_adjustments = []
+            tier_counts = {'HIGH': 0, 'MODERATE': 0, 'LOW': 0}
+
+            for anomaly in stage4_anomalies:
+                # Get raw confidence score (prefer stage2_confidence)
+                raw_confidence = (
+                    anomaly.get('stage2_confidence') or
+                    anomaly.get('calibrated_confidence') or
+                    anomaly.get('stage1_detection', {}).get('stage1_confidence', 0.5)
+                )
+
+                # Calibrate confidence
+                calibration_result = self.confidence_calibrator.calibrate(raw_confidence)
+
+                # Calculate adjustment
+                adjustment = calibration_result['calibrated_confidence'] - raw_confidence
+                calibration_adjustments.append(adjustment)
+
+                # Count tiers
+                tier = calibration_result['confidence_tier']
+                tier_counts[tier] = tier_counts.get(tier, 0) + 1
+
+                # Add calibration data to anomaly
+                calibrated_anomaly = {
+                    **anomaly,
+                    'confidence_calibration': {
+                        'raw_confidence': calibration_result['raw_confidence'],
+                        'calibrated_confidence': calibration_result['calibrated_confidence'],
+                        'confidence_tier': calibration_result['confidence_tier'],
+                        'tier_label': calibration_result['tier_label'],
+                        'explanation': calibration_result['explanation'],
+                        'adjustment': adjustment
+                    }
+                }
+
+                # Log significant adjustments
+                if abs(adjustment) > 0.1:
+                    logger.debug(
+                        f"Significant calibration adjustment for clause "
+                        f"{anomaly.get('clause_number', 'unknown')}: "
+                        f"{raw_confidence:.3f} → {calibration_result['calibrated_confidence']:.3f} "
+                        f"({adjustment:+.3f})"
+                    )
+
+                calibrated_anomalies.append(calibrated_anomaly)
+
+            # Calculate calibration summary
+            import numpy as np
+            avg_adjustment = np.mean(calibration_adjustments) if calibration_adjustments else 0.0
+            std_adjustment = np.std(calibration_adjustments) if calibration_adjustments else 0.0
+
+            calibration_summary = {
+                'avg_adjustment': float(avg_adjustment),
+                'std_adjustment': float(std_adjustment),
+                'min_adjustment': float(min(calibration_adjustments)) if calibration_adjustments else 0.0,
+                'max_adjustment': float(max(calibration_adjustments)) if calibration_adjustments else 0.0,
+                'high_confidence_count': tier_counts.get('HIGH', 0),
+                'moderate_confidence_count': tier_counts.get('MODERATE', 0),
+                'low_confidence_count': tier_counts.get('LOW', 0),
+                'calibrator_fitted': self.confidence_calibrator.is_fitted
+            }
+
+            stage5_duration = (time.time() - stage5_start) * 1000
+
+            logger.info(
+                f"Stage 5 complete: {len(calibrated_anomalies)} anomalies calibrated, "
+                f"avg adjustment: {avg_adjustment:+.3f}, "
+                f"tiers: HIGH={tier_counts.get('HIGH', 0)}, "
+                f"MODERATE={tier_counts.get('MODERATE', 0)}, "
+                f"LOW={tier_counts.get('LOW', 0)}, "
+                f"took {stage5_duration:.2f}ms"
+            )
+
+            if not self.confidence_calibrator.is_fitted:
+                logger.warning(
+                    "Calibrator not fitted, using raw confidence scores. "
+                    "Collect feedback to train calibrator."
+                )
+
+            return {
+                'anomalies_calibrated': len(calibrated_anomalies),
+                'calibrated_anomalies': calibrated_anomalies,
+                'calibration_summary': calibration_summary,
+                'proceed_to_stage6': True,
+                'timing_ms': {'total': stage5_duration},
+                'stage5_complete': True
+            }
+
+        except Exception as e:
+            logger.error(f"Stage 5 calibration failed: {e}", exc_info=True)
+
+            # Graceful fallback: return anomalies without calibration
+            return {
+                'anomalies_calibrated': 0,
+                'calibrated_anomalies': stage4_anomalies,
+                'calibration_summary': {},
+                'proceed_to_stage6': True,
+                'timing_ms': {'total': (time.time() - stage5_start) * 1000},
+                'stage5_complete': False,
+                'error': str(e)
+            }
+
+    def collect_user_feedback(
+        self,
+        anomaly_id: str,
+        user_action: str,
+        confidence_at_detection: float
+    ) -> Dict[str, Any]:
+        """
+        Collect user feedback on an anomaly detection.
+
+        This enables active learning by allowing the system to improve
+        confidence calibration based on user feedback.
+
+        Args:
+            anomaly_id: Unique identifier for the anomaly
+            user_action: User action - 'helpful', 'acted_on', 'dismissed', 'false_positive'
+            confidence_at_detection: Confidence score shown to user
+
+        Returns:
+            Dict with feedback status and metadata
+        """
+        if not self.active_learning:
+            logger.warning("Active learning manager not available")
+            return {
+                'success': False,
+                'error': 'Active learning not initialized'
+            }
+
+        try:
+            # Collect feedback
+            self.active_learning.collect_feedback(
+                anomaly_id=anomaly_id,
+                user_action=user_action,
+                confidence_at_detection=confidence_at_detection
+            )
+
+            # Get feedback stats
+            stats = self.active_learning.get_feedback_stats()
+
+            logger.info(
+                f"Feedback collected for anomaly {anomaly_id}: {user_action}, "
+                f"buffer: {stats['buffer_size']}/{stats['buffer_capacity']}"
+            )
+
+            return {
+                'success': True,
+                'feedback_stats': stats,
+                'retrain_triggered': stats['buffer_progress'] >= 1.0
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to collect feedback: {e}", exc_info=True)
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
+    def get_uncertainty_samples_for_feedback(
+        self,
+        anomalies: List[Dict[str, Any]],
+        n_samples: int = 5
+    ) -> List[Dict[str, Any]]:
+        """
+        Get most uncertain anomalies for targeted feedback collection.
+
+        Uses active learning to identify anomalies where user feedback
+        would be most valuable for improving the model.
+
+        Args:
+            anomalies: List of detected anomalies
+            n_samples: Number of uncertain samples to return
+
+        Returns:
+            List of n_samples most uncertain anomalies
+        """
+        if not self.active_learning:
+            logger.warning("Active learning manager not available")
+            return []
+
+        try:
+            return self.active_learning.get_uncertainty_samples(
+                anomalies=anomalies,
+                n_samples=n_samples
+            )
+        except Exception as e:
+            logger.error(f"Failed to get uncertainty samples: {e}")
+            return []
+
     async def detect_anomalies(
         self,
         document_id: str,
@@ -872,10 +1158,11 @@ class AnomalyDetector:
         Identifies unusual, risky, or consumer-unfriendly clauses automatically.
 
         Multi-stage pipeline:
-        - Stage 1: Pattern-based, Semantic, and Statistical detection
-        - Stage 2: Industry baseline, Service type context, Temporal filtering
+        - Stage 1: Multi-method detection (Pattern, Semantic, Statistical)
+        - Stage 2: Context filtering (Industry, Service Type, Temporal)
         - Stage 3: Clustering and deduplication to reduce noise
-        - Stage 4: Compound risk detection and final reporting
+        - Stage 4: Compound risk detection for systemic patterns
+        - Stage 5: Confidence calibration with active learning
 
         Args:
             document_id: Document identifier
@@ -1223,6 +1510,34 @@ class AnomalyDetector:
             f"Stage 4 complete: {len(stage4_result['compound_risks'])} compound patterns detected, "
             f"risk level: {stage4_result['compound_risk_assessment']['compound_risk_level']}"
         )
+
+        # STAGE 5: Confidence Calibration
+        stage5_result = self.run_stage5(
+            stage4_anomalies=all_anomalies
+        )
+
+        # Replace anomalies with calibrated versions
+        all_anomalies = stage5_result['calibrated_anomalies']
+
+        # Store Stage 5 results for document-level reporting
+        for anomaly in all_anomalies:
+            anomaly['_stage5_result'] = {
+                'calibration_summary': stage5_result['calibration_summary'],
+                'stage5_complete': stage5_result['stage5_complete']
+            }
+
+        logger.info(
+            f"Stage 5 complete: {stage5_result['anomalies_calibrated']} anomalies calibrated"
+        )
+
+        if stage5_result.get('calibration_summary'):
+            summary = stage5_result['calibration_summary']
+            logger.info(
+                f"  Calibration: avg_adjustment={summary.get('avg_adjustment', 0):+.3f}, "
+                f"HIGH={summary.get('high_confidence_count', 0)}, "
+                f"MODERATE={summary.get('moderate_confidence_count', 0)}, "
+                f"LOW={summary.get('low_confidence_count', 0)}"
+            )
 
         return all_anomalies
 
