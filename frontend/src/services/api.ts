@@ -14,7 +14,9 @@ import type {
   APIError,
 } from '@/types';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+// Support both VITE_API_URL (just the base) and VITE_API_BASE_URL (with /api/v1)
+const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || `${baseUrl}/api/v1`;
 
 class APIClient {
   private client: AxiosInstance;
@@ -68,7 +70,12 @@ class APIClient {
               message = 'File is too large. Maximum size is 10MB.';
               break;
             case 422:
-              message = error.response.data?.detail || 'Validation error';
+              const detail422 = error.response.data?.detail;
+              message = typeof detail422 === 'string' 
+                ? detail422 
+                : Array.isArray(detail422) 
+                  ? detail422.map(e => e.msg).join(', ') 
+                  : 'Validation error';
               break;
             case 429:
               message = 'Too many requests. Please try again later.';
@@ -80,7 +87,12 @@ class APIClient {
               message = 'Service temporarily unavailable. Please try again in a few minutes.';
               break;
             default:
-              message = error.response.data?.detail || message;
+              const detailDefault = error.response.data?.detail;
+              message = typeof detailDefault === 'string' 
+                ? detailDefault 
+                : Array.isArray(detailDefault) 
+                  ? detailDefault.map(e => e.msg).join(', ') 
+                  : message;
           }
         } else if (error.request) {
           // Request made but no response
