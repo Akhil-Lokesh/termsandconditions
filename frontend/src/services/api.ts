@@ -14,9 +14,35 @@ import type {
   APIError,
 } from '@/types';
 
-// Support both VITE_API_URL (just the base) and VITE_API_BASE_URL (with /api/v1)
-const baseUrl = import.meta.env.VITE_API_URL || 'https://termsandconditions-production.up.railway.app';
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || `${baseUrl}/api/v1`;
+// Determine API URL based on environment
+function getApiBaseUrl(): string {
+  // Check for explicitly set environment variable first
+  const envUrl = import.meta.env.VITE_API_URL;
+  
+  if (envUrl && envUrl.trim() !== '') {
+    // Ensure HTTPS in production
+    const url = envUrl.trim();
+    if (import.meta.env.PROD && url.startsWith('http://')) {
+      return url.replace('http://', 'https://') + '/api/v1';
+    }
+    return url + '/api/v1';
+  }
+  
+  // Production default - ALWAYS use HTTPS
+  if (import.meta.env.PROD) {
+    return 'https://termsandconditions-production.up.railway.app/api/v1';
+  }
+  
+  // Development default
+  return 'http://localhost:8000/api/v1';
+}
+
+const API_BASE_URL = getApiBaseUrl();
+
+// Log the URL in development for debugging
+if (import.meta.env.DEV) {
+  console.log('API Base URL:', API_BASE_URL);
+}
 
 class APIClient {
   private client: AxiosInstance;
@@ -178,7 +204,7 @@ class APIClient {
   }
 
   async getDocuments(skip = 0, limit = 10): Promise<DocumentListResponse> {
-    const response = await this.client.get<DocumentListResponse>('/documents', {
+    const response = await this.client.get<DocumentListResponse>('/documents/', {
       params: { skip, limit },
     });
     return response.data;
