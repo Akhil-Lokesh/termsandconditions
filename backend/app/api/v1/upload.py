@@ -87,38 +87,55 @@ async def run_anomaly_detection_background(
         # Extract company name from metadata
         company_name = metadata.get("company", "Unknown")
 
-        # Detect anomalies
+        # Detect anomalies - returns comprehensive report dict
         detector = AnomalyDetector(openai_service, pinecone_service, db)
-        anomalies = await detector.detect_anomalies(
+        detection_result = await detector.detect_anomalies(
             document_id=document_id,
             sections=sections,
             company_name=company_name,
             service_type="general",  # TODO: Auto-detect service type from metadata
         )
 
-        logger.info(
-            f"Anomaly detection completed: {len(anomalies)} anomalies found"
+        # Extract anomalies from the detection result
+        # The new pipeline returns a report dict with categorized alerts
+        all_anomalies = (
+            detection_result.get('high_severity_alerts', []) +
+            detection_result.get('medium_severity_alerts', []) +
+            detection_result.get('low_severity_alerts', [])
         )
+        
+        # Get risk score directly from the pipeline result
+        overall_risk_score = detection_result.get('overall_risk_score', 0.0)
+        
+        # Determine risk level from score
+        if overall_risk_score >= 7.0:
+            risk_level = "High"
+        elif overall_risk_score >= 4.0:
+            risk_level = "Medium"
+        else:
+            risk_level = "Low"
 
-        # Generate risk assessment report
-        risk_report = await detector.generate_report(document_id, anomalies)
+        logger.info(
+            f"Anomaly detection completed: {len(all_anomalies)} anomalies found, "
+            f"Risk Score: {overall_risk_score}/10 ({risk_level})"
+        )
 
         # Save anomalies to database
         from app.models.anomaly import Anomaly
 
-        for anomaly_data in anomalies:
+        for anomaly_data in all_anomalies:
             anomaly = Anomaly(
                 id=str(uuid.uuid4()),
                 document_id=document_id,
-                section=anomaly_data["section"],
-                clause_number=anomaly_data["clause_number"],
-                clause_text=anomaly_data["clause_text"],
-                severity=anomaly_data["severity"],
-                explanation=anomaly_data["explanation"],
+                section=anomaly_data.get("section", "Unknown"),
+                clause_number=anomaly_data.get("clause_number", "0"),
+                clause_text=anomaly_data.get("clause_text", ""),
+                severity=anomaly_data.get("severity", "low"),
+                explanation=anomaly_data.get("explanation", ""),
                 consumer_impact=anomaly_data.get("consumer_impact", ""),
                 recommendation=anomaly_data.get("recommendation", ""),
                 risk_category=anomaly_data.get("risk_category", "other"),
-                prevalence=anomaly_data["prevalence"],
+                prevalence=anomaly_data.get("prevalence", 0.0),
                 detected_indicators=anomaly_data.get("detected_indicators", []),
             )
             db.add(anomaly)
@@ -126,17 +143,16 @@ async def run_anomaly_detection_background(
         # Update document with risk assessment
         document = db.query(Document).filter(Document.id == document_id).first()
         if document:
-            document.anomaly_count = len(anomalies)
-            document.risk_score = risk_report["overall_risk"]["risk_score"]
-            document.risk_level = risk_report["overall_risk"]["risk_level"]
+            document.anomaly_count = len(all_anomalies)
+            document.risk_score = overall_risk_score
+            document.risk_level = risk_level
             document.processing_status = "completed"
             db.commit()
 
             logger.info(
                 f"Background anomaly detection complete for {document_id}: "
-                f"{len(anomalies)} anomalies, "
-                f"Risk Score: {risk_report['overall_risk']['risk_score']}/10 "
-                f"({risk_report['overall_risk']['risk_level']})"
+                f"{len(all_anomalies)} anomalies saved, "
+                f"Risk Score: {overall_risk_score}/10 ({risk_level})"
             )
         else:
             logger.error(f"Document {document_id} not found when updating anomaly results")
