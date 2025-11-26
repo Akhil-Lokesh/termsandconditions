@@ -56,13 +56,19 @@ class APIClient {
       },
     });
 
-    // Request interceptor: Add auth token
+    // Request interceptor: Add auth token and handle FormData
     this.client.interceptors.request.use(
       (config) => {
         const token = this.getToken();
         if (token && config.headers) {
           config.headers.Authorization = `Bearer ${token}`;
         }
+        
+        // If sending FormData, remove Content-Type so browser sets it with boundary
+        if (config.data instanceof FormData && config.headers) {
+          delete config.headers['Content-Type'];
+        }
+        
         return config;
       },
       (error) => Promise.reject(error)
@@ -193,10 +199,8 @@ class APIClient {
     const formData = new FormData();
     formData.append('file', file);
 
+    // FormData Content-Type is handled automatically by request interceptor
     const response = await this.client.post<DocumentUploadResponse>('/documents/', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
       timeout: 120000, // 2 minutes for document processing
     });
 
