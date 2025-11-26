@@ -8,6 +8,10 @@ sqlalchemy==2.0.25
 alembic==1.13.1
 psycopg2-binary==2.9.9
 
+# Supabase (for deployment)
+supabase==2.3.0
+storage3==0.7.0
+
 # OpenAI and Pinecone
 openai==1.10.0
 pinecone-client==3.0.2
