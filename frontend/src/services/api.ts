@@ -15,7 +15,7 @@ import type {
 } from '@/types';
 
 // Support both VITE_API_URL (just the base) and VITE_API_BASE_URL (with /api/v1)
-const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const baseUrl = import.meta.env.VITE_API_URL || 'https://termsandconditions-production.up.railway.app';
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || `${baseUrl}/api/v1`;
 
 class APIClient {
