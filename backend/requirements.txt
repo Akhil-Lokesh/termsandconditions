@@ -1,4 +1,5 @@
-# Core FastAPI and Web Server
+# T&C Analysis Backend - Production Requirements
+# FastAPI & Server
 fastapi==0.109.0
 uvicorn[standard]==0.27.0
 python-multipart==0.0.6
@@ -8,18 +9,18 @@ sqlalchemy==2.0.25
 alembic==1.13.1
 psycopg2-binary==2.9.9
 
-# Supabase (for deployment)
+# Supabase
 supabase==2.3.0
 storage3==0.7.0
 
-# OpenAI and Pinecone
+# AI Services (OpenAI handles embeddings - no need for local ML)
 openai==1.10.0
 pinecone-client==3.0.2
 
-# Redis Cache
+# Cache
 redis==5.0.1
 
-# Authentication & Security
+# Authentication
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.1.2
@@ -28,28 +29,32 @@ bcrypt==4.1.2
 PyPDF2==3.0.1
 pdfplumber==0.11.0
 
-# Configuration & Environment
+# Pydantic & Config
 pydantic==2.5.3
 pydantic-settings==2.1.0
 python-dotenv==1.0.1
-email-validator==2.2.0
+email-validator==2.1.1
 
-# Utilities
+# Utils
 tenacity==8.2.3
 slowapi==0.1.9
 
-# Async support
+# Async
 aiofiles==23.2.1
 
-# Testing & HTTP Client
+# HTTP Client (compatible with supabase)
 httpx==0.24.1
+
+# Testing
 pytest==7.4.3
 pytest-asyncio==0.23.3
 
-# Data Collection
+# Web scraping (lightweight)
 beautifulsoup4==4.12.3
+
+# Reports
 reportlab==4.0.9
 
-# Machine Learning (CPU-only versions for lighter deployment)
+# Scientific (lightweight - for any basic stats needed)
 numpy==1.26.4
 scikit-learn==1.3.2
