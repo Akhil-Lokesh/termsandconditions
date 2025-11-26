@@ -59,7 +59,6 @@ async def run_anomaly_detection_background(
     metadata: dict,
     openai_service: OpenAIService,
     pinecone_service: PineconeService,
-    db: Session,
 ):
     """
     Run anomaly detection in background after document upload completes.
@@ -76,8 +75,12 @@ async def run_anomaly_detection_background(
         metadata: Document metadata (company name, etc.)
         openai_service: OpenAI service instance
         pinecone_service: Pinecone service instance
-        db: Database session
     """
+    # Create a NEW database session for the background task
+    # The original session from the request is already closed
+    from app.db.session import SessionLocal
+    db = SessionLocal()
+    
     try:
         logger.info(f"Starting background anomaly detection for {document_id}...")
 
@@ -152,6 +155,11 @@ async def run_anomaly_detection_background(
                 db.commit()
         except Exception as db_error:
             logger.error(f"Failed to update document status after error: {db_error}")
+    
+    finally:
+        # Always close the session when done
+        db.close()
+        logger.info(f"Background task session closed for {document_id}")
 
 
 @router.post(
@@ -375,7 +383,7 @@ async def upload_document(
         document.processing_status = "analyzing_anomalies"
         db.commit()
 
-        # Schedule background task
+        # Schedule background task (creates its own db session)
         background_tasks.add_task(
             run_anomaly_detection_background,
             document_id=doc_id,
@@ -383,7 +391,6 @@ async def upload_document(
             metadata=metadata,
             openai_service=openai_service,
             pinecone_service=pinecone_service,
-            db=db,
         )
 
         logger.info(f"Background anomaly detection scheduled for {doc_id}")
