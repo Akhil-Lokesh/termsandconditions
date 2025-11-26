@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     DATABASE_POOL_SIZE: int = 5
     DATABASE_MAX_OVERFLOW: int = 10
 
+    # Supabase Configuration (for deployment)
+    SUPABASE_URL: str = ""
+    SUPABASE_ANON_KEY: str = ""
+    SUPABASE_SERVICE_ROLE_KEY: str = ""
+    STORAGE_BUCKET_NAME: str = "documents"
+
     # Redis Configuration
     REDIS_URL: str = "redis://localhost:6379/0"
     CACHE_TTL: int = 3600  # 1 hour in seconds
