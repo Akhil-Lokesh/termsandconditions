@@ -13,11 +13,21 @@ export const useDocuments = () => {
 };
 
 export const useDocument = (id: string) => {
-  return useQuery({
+  const query = useQuery({
     queryKey: ['documents', id],
     queryFn: () => api.getDocument(id),
     enabled: !!id,
+    // Poll every 3 seconds while document is still processing
+    refetchInterval: (query) => {
+      const status = query.state.data?.processing_status;
+      // Keep polling if still analyzing
+      if (status === 'analyzing_anomalies' || status === 'processing' || status === 'embedding_completed') {
+        return 3000; // 3 seconds
+      }
+      return false; // Stop polling once completed or failed
+    },
   });
+  return query;
 };
 
 export const useUploadDocument = () => {

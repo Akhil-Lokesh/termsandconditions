@@ -12,17 +12,19 @@ import logging
 from app.api.deps import (
     get_db,
     get_current_active_user,
-    get_openai_service,
+    get_embedding_service,
     get_pinecone_service,
     get_cache_service,
+    get_claude_service,
 )
 from app.core.config import settings
 from app.models.user import User
 from app.models.document import Document
 from app.schemas.query import QueryRequest, QueryResponse, Citation
-from app.services.openai_service import OpenAIService
+from app.services.embedding_service import EmbeddingService
 from app.services.pinecone_service import PineconeService
 from app.services.cache_service import CacheService
+from app.services.claude_service import ClaudeService
 from app.prompts.qa_prompts import QA_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -43,7 +45,7 @@ router = APIRouter()
     1. Generate embedding for question
     2. Search Pinecone for relevant clauses (top 5)
     3. Build context with citations
-    4. Generate answer with GPT-4
+    4. Generate answer with Claude
     5. Return answer with source citations and confidence score
 
     **Example Questions:**
@@ -89,9 +91,10 @@ async def query_document(
     query_data: QueryRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
-    openai_service: OpenAIService = Depends(get_openai_service),
+    embedding_service: EmbeddingService = Depends(get_embedding_service),
     pinecone_service: PineconeService = Depends(get_pinecone_service),
     cache_service: CacheService = Depends(get_cache_service),
+    claude_service: ClaudeService = Depends(get_claude_service),
 ):
     """
     Ask a question about a document and get an AI-generated answer with citations.
@@ -99,9 +102,8 @@ async def query_document(
     Uses RAG (Retrieval-Augmented Generation) to provide accurate answers
     based on the actual document content.
     """
-    # Apply rate limit: 100 queries per hour per IP
-    limiter = request.app.state.limiter
-    await limiter.limit("100/hour")(request, endpoint_func=query_document)
+    # NOTE: Rate limiting is handled by the @limiter.limit decorator on the route
+    # The incorrect inline limiter call was removed
 
     logger.info(f"Query from {current_user.email}: {query_data.question[:100]}")
 
@@ -128,8 +130,10 @@ async def query_document(
             detail=f"Document not found: {query_data.document_id}",
         )
 
-    # Check if document processing completed
-    if document.processing_status not in ["completed", "anomaly_detection_failed"]:
+    # Check if document processing completed (allow queries during anomaly detection)
+    # Q&A only requires clause extraction to be complete, not full anomaly detection
+    allowed_statuses = ["completed", "anomaly_detection_failed", "analyzing_anomalies"]
+    if document.processing_status not in allowed_statuses:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Document is still processing. Status: {document.processing_status}",
@@ -150,7 +154,7 @@ async def query_document(
         # ============================================================
         # STEP 1: Generate question embedding
         # ============================================================
-        question_embedding = await openai_service.create_embedding(query_data.question)
+        question_embedding = await embedding_service.create_embedding(query_data.question)
 
         logger.info(f"Generated embedding for question")
 
@@ -164,8 +168,8 @@ async def query_document(
             filter={"document_id": query_data.document_id},
         )
 
-        # Filter by relevance score (only keep scores > 0.7)
-        RELEVANCE_THRESHOLD = 0.7
+        # Filter by relevance score (only keep scores > 0.3)
+        RELEVANCE_THRESHOLD = 0.3
         relevant_results = [
             r for r in search_results
             if r.get("score", 0) >= RELEVANCE_THRESHOLD
@@ -227,21 +231,20 @@ async def query_document(
         logger.info(f"Built context with {len(citations)} citations")
 
         # ============================================================
-        # STEP 4: Generate answer with GPT-4
+        # STEP 4: Generate answer with Claude
         # ============================================================
         prompt = QA_SYSTEM_PROMPT.format(
             context=context,
             question=query_data.question,
         )
 
-        answer = await openai_service.create_completion(
+        answer = await claude_service.create_completion(
             prompt=prompt,
-            model=settings.OPENAI_MODEL_GPT4,
             temperature=0.0,  # Deterministic answers
             max_tokens=500,
         )
 
-        logger.info("Answer generated successfully")
+        logger.info("Answer generated successfully with Claude")
 
         # ============================================================
         # STEP 5: Build response

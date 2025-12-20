@@ -27,9 +27,9 @@ class AlertRanker:
         TARGET_ALERTS: Target number of high-priority alerts (5)
     """
 
-    # Alert budget constants
-    MAX_ALERTS = 10
-    TARGET_ALERTS = 5
+    # Alert budget constants (set high to show all anomalies)
+    MAX_ALERTS = 100  # Increased from 10 to show all anomalies
+    TARGET_ALERTS = 50  # Increased from 5
 
     # Severity weights for scoring
     SEVERITY_WEIGHTS = {

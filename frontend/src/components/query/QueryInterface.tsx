@@ -1,25 +1,75 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useDocumentQuery } from '@/hooks/useQuery';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { QueryResponse } from './QueryResponse';
 import { Loader2, Send, MessageSquare } from 'lucide-react';
+import { Document, Anomaly } from '@/types';
 
 interface QueryInterfaceProps {
   documentId: string;
+  document?: Document;
+  anomalies?: Anomaly[];
 }
 
-const EXAMPLE_QUESTIONS = [
-  'What is the refund policy?',
-  'Can the company change these terms at any time?',
-  'What happens to my data if I delete my account?',
-  'Am I liable for any damages?',
-];
+// Generate dynamic questions based on document and anomalies
+const generateExampleQuestions = (document?: Document, anomalies?: Anomaly[]): string[] => {
+  const questions: string[] = [];
+  const companyName = document?.metadata?.company_name || document?.metadata?.company || 'the company';
 
-export const QueryInterface = ({ documentId }: QueryInterfaceProps) => {
+  // Add company-specific questions
+  questions.push(`What rights does ${companyName} have over my content?`);
+  questions.push(`Can ${companyName} terminate my account without reason?`);
+
+  // Add questions based on detected anomalies
+  if (anomalies && anomalies.length > 0) {
+    const riskFlags = new Set<string>();
+    anomalies.forEach(a => {
+      a.risk_flags?.forEach(flag => riskFlags.add(flag.toLowerCase()));
+    });
+
+    // Generate questions based on detected risk categories
+    if (riskFlags.has('unilateral termination') || riskFlags.has('unilateral_termination')) {
+      questions.push(`Under what conditions can ${companyName} terminate my account?`);
+    }
+    if (riskFlags.has('content moderation control') || riskFlags.has('content_moderation')) {
+      questions.push(`What content can ${companyName} remove and why?`);
+    }
+    if (riskFlags.has('broad usage rights') || riskFlags.has('broad_usage_rights')) {
+      questions.push(`What can ${companyName} do with my uploaded content?`);
+    }
+    if (riskFlags.has('unlimited liability') || riskFlags.has('unlimited_liability')) {
+      questions.push(`What am I liable for when using this service?`);
+    }
+    if (riskFlags.has('unilateral changes') || riskFlags.has('unilateral_changes')) {
+      questions.push(`How will I be notified if these terms change?`);
+    }
+    if (riskFlags.has('broad liability disclaimer') || riskFlags.has('liability_disclaimer')) {
+      questions.push(`What is ${companyName} NOT responsible for?`);
+    }
+    if (riskFlags.has('data collection') || riskFlags.has('data_collection')) {
+      questions.push(`What personal data does ${companyName} collect?`);
+    }
+  }
+
+  // Add general questions
+  questions.push(`What happens to my data if I delete my account?`);
+  questions.push(`Is there a dispute resolution or arbitration clause?`);
+
+  // Return unique questions, max 5
+  return [...new Set(questions)].slice(0, 5);
+};
+
+export const QueryInterface = ({ documentId, document, anomalies }: QueryInterfaceProps) => {
   const [question, setQuestion] = useState('');
   const queryMutation = useDocumentQuery();
+
+  // Generate dynamic example questions based on document and anomalies
+  const exampleQuestions = useMemo(
+    () => generateExampleQuestions(document, anomalies),
+    [document, anomalies]
+  );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,9 +129,9 @@ export const QueryInterface = ({ documentId }: QueryInterfaceProps) => {
 
           {/* Example Questions */}
           <div className="pt-4 border-t">
-            <p className="text-sm font-medium mb-3">Try these example questions:</p>
+            <p className="text-sm font-medium mb-3">Try these questions about this document:</p>
             <div className="grid gap-2">
-              {EXAMPLE_QUESTIONS.map((example) => (
+              {exampleQuestions.map((example) => (
                 <button
                   key={example}
                   onClick={() => handleExampleClick(example)}

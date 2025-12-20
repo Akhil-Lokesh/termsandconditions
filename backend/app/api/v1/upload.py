@@ -24,28 +24,65 @@ from sqlalchemy.orm import Session
 from app.api.deps import (
     get_db,
     get_current_active_user,
-    get_openai_service,
+    get_embedding_service,
     get_pinecone_service,
     get_cache_service,
+    get_claude_service,
 )
 from app.core.config import settings
-from app.core.document_processor import DocumentProcessor
-from app.core.structure_extractor import StructureExtractor
-from app.core.legal_chunker import LegalChunker
-from app.core.metadata_extractor import MetadataExtractor
 from app.core.anomaly_detector import AnomalyDetector
+from app.core.document_pipeline import DocumentProcessingPipeline
 from app.models.user import User
 from app.models.document import Document
 from app.models.clause import Clause
 from app.schemas.document import DocumentResponse, DocumentCreate, DocumentListResponse
-from app.services.openai_service import OpenAIService
+from app.services.embedding_service import EmbeddingService
 from app.services.pinecone_service import PineconeService
+from app.services.claude_service import ClaudeService
 from app.utils.exceptions import DocumentProcessingError, EmbeddingError, PineconeError
 import logging
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+# =============================================================================
+# HELPER FUNCTIONS (Extracted for clarity)
+# =============================================================================
+
+
+def validate_file(file: UploadFile, content: bytes) -> float:
+    """
+    Validate uploaded file type and size.
+
+    Args:
+        file: Uploaded file
+        content: File content bytes
+
+    Returns:
+        File size in MB
+
+    Raises:
+        HTTPException: If validation fails
+    """
+    # Validate file type (PDF only)
+    if not file.filename.endswith(".pdf"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only PDF files are supported. Please upload a .pdf file.",
+        )
+
+    file_size_mb = len(content) / (1024 * 1024)
+
+    # Validate file size
+    if file_size_mb > settings.MAX_UPLOAD_SIZE_MB:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File too large ({file_size_mb:.1f}MB). Maximum size: {settings.MAX_UPLOAD_SIZE_MB}MB",
+        )
+
+    return file_size_mb
 
 
 # ============================================================================
@@ -57,7 +94,7 @@ async def run_anomaly_detection_background(
     document_id: str,
     sections: list,
     metadata: dict,
-    openai_service: OpenAIService,
+    embedding_service: EmbeddingService,
     pinecone_service: PineconeService,
 ):
     """
@@ -73,22 +110,42 @@ async def run_anomaly_detection_background(
         document_id: Document ID
         sections: Parsed document sections with clauses
         metadata: Document metadata (company name, etc.)
-        openai_service: OpenAI service instance
+        embedding_service: Embedding service instance
         pinecone_service: Pinecone service instance
     """
     # Create a NEW database session for the background task
     # The original session from the request is already closed
     from app.db.session import SessionLocal
+    import asyncio
+
+    # Small delay to ensure the main transaction is committed and visible
+    await asyncio.sleep(1)
+
     db = SessionLocal()
-    
+
     try:
         logger.info(f"Starting background anomaly detection for {document_id}...")
+
+        # Verify document exists with retry (handles race conditions)
+        max_retries = 3
+        for attempt in range(max_retries):
+            document_check = db.query(Document).filter(Document.id == document_id).first()
+            if document_check:
+                logger.info(f"Document {document_id} verified (attempt {attempt + 1})")
+                break
+            logger.warning(f"Document {document_id} not found, retrying... (attempt {attempt + 1})")
+            db.close()
+            await asyncio.sleep(2)
+            db = SessionLocal()
+        else:
+            logger.error(f"Document {document_id} not found after {max_retries} retries")
+            return
 
         # Extract company name from metadata
         company_name = metadata.get("company", "Unknown")
 
         # Detect anomalies - returns comprehensive report dict
-        detector = AnomalyDetector(openai_service, pinecone_service, db)
+        detector = AnomalyDetector(embedding_service, pinecone_service, db)
         detection_result = await detector.detect_anomalies(
             document_id=document_id,
             sections=sections,
@@ -124,6 +181,20 @@ async def run_anomaly_detection_background(
         from app.models.anomaly import Anomaly
 
         for anomaly_data in all_anomalies:
+            # Extract prevalence - handle both float and dict formats
+            prevalence_value = anomaly_data.get("prevalence", 0.0)
+            if isinstance(prevalence_value, dict):
+                prevalence_value = prevalence_value.get("prevalence", 0.0)
+
+            # Convert detected_indicators to JSON-serializable format
+            detected_indicators = anomaly_data.get("detected_indicators", [])
+            if isinstance(detected_indicators, str):
+                import json
+                try:
+                    detected_indicators = json.loads(detected_indicators)
+                except:
+                    detected_indicators = []
+
             anomaly = Anomaly(
                 id=str(uuid.uuid4()),
                 document_id=document_id,
@@ -135,8 +206,8 @@ async def run_anomaly_detection_background(
                 consumer_impact=anomaly_data.get("consumer_impact", ""),
                 recommendation=anomaly_data.get("recommendation", ""),
                 risk_category=anomaly_data.get("risk_category", "other"),
-                prevalence=anomaly_data.get("prevalence", 0.0),
-                detected_indicators=anomaly_data.get("detected_indicators", []),
+                prevalence=float(prevalence_value) if prevalence_value else 0.0,
+                detected_indicators=detected_indicators,
             )
             db.add(anomaly)
 
@@ -193,8 +264,8 @@ async def run_anomaly_detection_background(
     2. Extract text from PDF (pdfplumber primary, PyPDF2 fallback)
     3. Parse document structure (sections, clauses)
     4. Create semantic chunks with metadata
-    5. Generate embeddings (OpenAI text-embedding-3-small)
-    6. Extract metadata (company, jurisdiction, dates) using GPT-4
+    5. Generate embeddings (local sentence-transformers)
+    6. Extract metadata (company, jurisdiction, dates) using Claude
     7. Store vectors in Pinecone (user_tcs namespace)
     8. Run anomaly detection (compare to baseline corpus)
     9. Save analysis results to database
@@ -208,8 +279,9 @@ async def upload_document(
     file: UploadFile = File(..., description="PDF file (max 10MB)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
-    openai_service: OpenAIService = Depends(get_openai_service),
+    embedding_service: EmbeddingService = Depends(get_embedding_service),
     pinecone_service: PineconeService = Depends(get_pinecone_service),
+    claude_service: ClaudeService = Depends(get_claude_service),
 ):
     """
     Upload and process a T&C document.
@@ -218,28 +290,11 @@ async def upload_document(
     text extraction, structure parsing, embedding generation, vector storage,
     and anomaly detection.
     """
-    # Rate limiting is handled by slowapi decorator in main.py
-
     logger.info(f"Document upload started by user: {current_user.email}")
 
-    # Validate file type (PDF only)
-    if not file.filename.endswith(".pdf"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only PDF files are supported. Please upload a .pdf file.",
-        )
-
-    # Read file content
+    # Read and validate file
     content = await file.read()
-    file_size_mb = len(content) / (1024 * 1024)
-
-    # Validate file size
-    if file_size_mb > settings.MAX_UPLOAD_SIZE_MB:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"File too large ({file_size_mb:.1f}MB). Maximum size: {settings.MAX_UPLOAD_SIZE_MB}MB",
-        )
-
+    file_size_mb = validate_file(file, content)
     logger.info(f"File validated: {file.filename} ({file_size_mb:.2f}MB)")
 
     # Generate unique document ID
@@ -253,175 +308,53 @@ async def upload_document(
         # Write temp file
         with open(temp_path, "wb") as f:
             f.write(content)
-
         logger.info(f"Temp file created: {temp_path}")
 
-        # ============================================================
-        # STEP 1: Extract text from PDF
-        # ============================================================
-        processor = DocumentProcessor()
-        extracted = await processor.extract_text(str(temp_path))
+        # Run the processing pipeline
+        pipeline = DocumentProcessingPipeline(embedding_service, pinecone_service, claude_service)
+        result = await pipeline.process_document(str(temp_path), doc_id)
 
-        text = extracted["text"]
-        page_count = extracted["page_count"]
-        extraction_method = extracted["extraction_method"]
-
-        logger.info(
-            f"Text extracted: {len(text)} chars, {page_count} pages, method={extraction_method}"
-        )
-
-        if len(text) < 100:
-            raise DocumentProcessingError(
-                "Document text too short. This may be a scanned PDF or corrupted file."
-            )
-
-        # ============================================================
-        # STEP 2: Parse structure (sections, clauses)
-        # ============================================================
-        extractor = StructureExtractor()
-        structure = await extractor.extract_structure(text)
-
-        sections = structure["sections"]
-        num_clauses = structure["num_clauses"]
-
-        logger.info(
-            f"Structure extracted: {num_clauses} clauses found in {len(sections)} sections"
-        )
-
-        if num_clauses == 0:
-            raise DocumentProcessingError(
-                "No structured clauses found in document. Unable to analyze."
-            )
-
-        # ============================================================
-        # STEP 2.5: Prepare clauses for database (will be saved with document)
-        # ============================================================
-        logger.info(f"Preparing {num_clauses} clauses for database...")
-
-        clause_records = []
-        for section in sections:
-            section_name = section.get("title", "Unknown Section")
-            section_number = section.get("number", "0")
-
-            for clause in section.get("clauses", []):
-                # Store section_number in metadata since it's not a direct column
-                clause_metadata = {
-                    "section_number": section_number
-                }
-                
-                clause_record = Clause(
-                    id=str(uuid.uuid4()),
-                    document_id=doc_id,
-                    section=section_name,
-                    clause_number=clause.get("id", ""),
-                    text=clause.get("text", ""),
-                    clause_metadata=clause_metadata,
-                )
-                clause_records.append(clause_record)
-
-        # Clauses will be committed together with the document
-        logger.info(f"✓ Prepared {num_clauses} clauses")
-
-        # ============================================================
-        # STEP 3: Create semantic chunks
-        # ============================================================
-        chunker = LegalChunker()
-        chunks = await chunker.create_chunks(sections)
-
-        logger.info(f"Created {len(chunks)} chunks for embedding")
-
-        # ============================================================
-        # STEP 4: Generate embeddings
-        # ============================================================
-        texts = [chunk["text"] for chunk in chunks]
-        embeddings = await openai_service.batch_create_embeddings(texts)
-
-        logger.info(f"Generated {len(embeddings)} embeddings")
-
-        # Add embeddings to chunks
-        for chunk, embedding in zip(chunks, embeddings):
-            chunk["embedding"] = embedding
-
-        # ============================================================
-        # STEP 5: Extract metadata with GPT-4
-        # ============================================================
-        metadata_extractor = MetadataExtractor(openai_service)
-        metadata = await metadata_extractor.extract_metadata(text)
-
-        logger.info(
-            f"Metadata extracted: Company={metadata.get('company_name', 'Unknown')}, "
-            f"Jurisdiction={metadata.get('jurisdiction', 'Unknown')}"
-        )
-
-        # ============================================================
-        # STEP 6: Store in Pinecone
-        # ============================================================
-        await pinecone_service.upsert_chunks(
-            chunks=chunks,
-            namespace=settings.PINECONE_USER_NAMESPACE,
-            document_id=doc_id,
-        )
-
-        logger.info(f"Stored {len(chunks)} vectors in Pinecone")
-
-        # ============================================================
-        # STEP 7: Save to database (document + clauses together)
-        # ============================================================
+        # Save document and clauses to database
         document = Document(
             id=doc_id,
             user_id=current_user.id,
             filename=file.filename,
-            text=text,
-            document_metadata=metadata,
-            page_count=page_count,
-            clause_count=num_clauses,
+            text=result.text,
+            document_metadata=result.metadata,
+            page_count=result.page_count,
+            clause_count=result.num_clauses,
             processing_status="embedding_completed",
         )
 
         db.add(document)
-        
-        # Add all clause records
-        for clause_record in clause_records:
+        for clause_record in result.clause_records:
             db.add(clause_record)
-        
-        # Commit document and clauses together
         db.commit()
         db.refresh(document)
 
-        logger.info(f"Document and {len(clause_records)} clauses saved to database: {doc_id}")
+        logger.info(f"Document and {len(result.clause_records)} clauses saved: {doc_id}")
 
-        # ============================================================
-        # STEP 8: Schedule anomaly detection in background
-        # ============================================================
-        logger.info(f"Scheduling background anomaly detection for {doc_id}")
-
-        # Update document status to indicate background processing
+        # Schedule background anomaly detection
         document.processing_status = "analyzing_anomalies"
         db.commit()
 
-        # Schedule background task (creates its own db session)
         background_tasks.add_task(
             run_anomaly_detection_background,
             document_id=doc_id,
-            sections=sections,
-            metadata=metadata,
-            openai_service=openai_service,
+            sections=result.sections,
+            metadata=result.metadata,
+            embedding_service=embedding_service,
             pinecone_service=pinecone_service,
         )
 
-        logger.info(f"Background anomaly detection scheduled for {doc_id}")
-
-        # ============================================================
-        # Success! Upload complete, analysis running in background
-        # ============================================================
-        logger.info(f"✓ Document upload complete: {doc_id} (anomaly detection in background)")
+        logger.info(f"Document upload complete: {doc_id} (anomaly detection in background)")
 
         return DocumentResponse(
             id=doc_id,
             filename=file.filename,
-            metadata=metadata,
-            page_count=page_count,
-            clause_count=num_clauses,
+            metadata=result.metadata,
+            page_count=result.page_count,
+            clause_count=result.num_clauses,
             anomaly_count=0,  # Will be populated when background task completes
             processing_status="analyzing_anomalies",
             created_at=document.created_at,
@@ -438,7 +371,7 @@ async def upload_document(
         logger.error(f"Embedding generation failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Failed to generate embeddings. OpenAI service may be unavailable.",
+            detail="Failed to generate embeddings. Embedding service may be unavailable.",
         )
 
     except PineconeError as e:

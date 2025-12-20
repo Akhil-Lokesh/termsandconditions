@@ -9,7 +9,7 @@ from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
 
 from app.services.pinecone_service import PineconeService
-from app.services.openai_service import OpenAIService
+from app.services.embedding_service import EmbeddingService
 from app.core.config import settings
 from app.utils.logger import setup_logger
 
@@ -21,7 +21,7 @@ class PrevalenceCalculator:
 
     def __init__(
         self,
-        openai_service: Optional[OpenAIService] = None,
+        embedding_service: Optional[EmbeddingService] = None,
         pinecone_service: Optional[PineconeService] = None,
         db: Optional[Session] = None,
     ):
@@ -29,11 +29,11 @@ class PrevalenceCalculator:
         Initialize prevalence calculator.
 
         Args:
-            openai_service: Optional OpenAI service instance
+            embedding_service: Optional embedding service instance
             pinecone_service: Optional Pinecone service instance
             db: Optional database session for future use
         """
-        self.openai = openai_service or OpenAIService()
+        self.embedding = embedding_service or EmbeddingService()
         self.pinecone = pinecone_service or PineconeService()
         self.db = db  # Store for potential future use
 
@@ -45,6 +45,10 @@ class PrevalenceCalculator:
         """
         Calculate how common a clause is in baseline corpus.
 
+        Uses a similarity-based approach:
+        - High similarity scores (>0.7) = clause is common in baseline
+        - Low similarity scores (<0.5) = clause is rare/unusual
+
         Args:
             clause_text: Text of the clause
             clause_type: Type of clause
@@ -52,35 +56,47 @@ class PrevalenceCalculator:
         Returns:
             Prevalence percentage (0.0 to 1.0)
         """
-        # Generate embedding for clause
-        embedding = await self.openai.create_embedding(clause_text)
+        try:
+            # Generate embedding for clause
+            embedding = await self.embedding.create_embedding(clause_text)
 
-        # Search baseline corpus
-        similar_clauses = await self.pinecone.search(
-            embedding=embedding,
-            namespace=settings.PINECONE_NAMESPACE_BASELINE,
-            filter={"clause_type": clause_type},
-            top_k=settings.BASELINE_SAMPLE_SIZE,
-        )
+            # Search baseline corpus using query method (no filter for broader search)
+            similar_clauses = await self.pinecone.query(
+                query_embedding=embedding,
+                namespace=settings.PINECONE_BASELINE_NAMESPACE,
+                top_k=20,  # Get top 20 similar clauses
+            )
 
-        # Check if baseline corpus is empty
-        if not similar_clauses or len(similar_clauses) == 0:
-            logger.warning(f"No baseline data found for clause type: {clause_type}")
-            return 0.1  # Unknown but probably unusual - low prevalence default
+            # Check if baseline corpus is empty
+            if not similar_clauses or len(similar_clauses) == 0:
+                logger.warning(f"No baseline data found for clause type: {clause_type}")
+                return 0.1  # Unknown but probably unusual
 
-        # Count highly similar clauses (similarity > 0.85)
-        num_similar = sum(
-            1
-            for c in similar_clauses
-            if c.get("score", 0) > settings.SIMILARITY_THRESHOLD
-        )
+            # Calculate prevalence based on similarity scores
+            # Use the average of top 5 similarity scores
+            scores = [c.get("score", 0) for c in similar_clauses[:5]]
+            avg_similarity = sum(scores) / len(scores) if scores else 0
 
-        # Calculate prevalence based on actual results returned
-        total_results = len(similar_clauses)
-        prevalence = num_similar / total_results if total_results > 0 else 0.1
+            # Convert similarity to prevalence:
+            # - Similarity > 0.75 = very common (prevalence 60-90%)
+            # - Similarity 0.5-0.75 = somewhat common (prevalence 30-60%)
+            # - Similarity < 0.5 = rare (prevalence 0-30%)
+            if avg_similarity > 0.75:
+                prevalence = 0.6 + (avg_similarity - 0.75) * 1.2  # 60-90%
+            elif avg_similarity > 0.5:
+                prevalence = 0.3 + (avg_similarity - 0.5) * 1.2  # 30-60%
+            else:
+                prevalence = avg_similarity * 0.6  # 0-30%
 
-        logger.info(
-            f"Prevalence: {prevalence:.2%} ({num_similar}/{total_results} similar clauses)"
-        )
+            # Clamp to 0-1 range
+            prevalence = max(0.0, min(1.0, prevalence))
 
-        return prevalence
+            logger.info(
+                f"Prevalence: {prevalence:.1%} (avg similarity: {avg_similarity:.2f} from top {len(scores)} matches)"
+            )
+
+            return prevalence
+
+        except Exception as e:
+            logger.warning(f"Prevalence calculation failed: {e}")
+            return 0.1  # Default to low prevalence on error

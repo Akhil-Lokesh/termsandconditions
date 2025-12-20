@@ -225,7 +225,7 @@ class APIClient {
 
   // Queries
   async queryDocument(data: QueryRequest): Promise<QueryResponse> {
-    const response = await this.client.post<QueryResponse>('/query', data);
+    const response = await this.client.post<QueryResponse>('/query/', data);
     return response.data;
   }
 
@@ -247,6 +247,11 @@ class APIClient {
 
   async getAnomaly(documentId: string, anomalyId: string): Promise<Anomaly> {
     const response = await this.client.get<Anomaly>(`/anomalies/${documentId}/${anomalyId}`);
+    return response.data;
+  }
+
+  async reanalyzeDocument(documentId: string): Promise<AnomalyListResponse> {
+    const response = await this.client.post<AnomalyListResponse>(`/anomalies/reanalyze/${documentId}`);
     return response.data;
   }
 }

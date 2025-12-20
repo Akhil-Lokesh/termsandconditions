@@ -2,14 +2,20 @@ import { useAnomalies } from '@/hooks/useAnomalies';
 import { AnomalyCard } from './AnomalyCard';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Loader2, CheckCircle } from 'lucide-react';
+import { Loader2, CheckCircle, Clock } from 'lucide-react';
 
 interface AnomalyListProps {
   documentId: string;
+  processingStatus?: string;
 }
 
-export const AnomalyList = ({ documentId }: AnomalyListProps) => {
-  const { data: anomalies, isLoading, error } = useAnomalies(documentId);
+export const AnomalyList = ({ documentId, processingStatus }: AnomalyListProps) => {
+  const { data: anomalies, isLoading, error } = useAnomalies(documentId, processingStatus);
+
+  // Check if still analyzing
+  const isAnalyzing = processingStatus === 'analyzing_anomalies' ||
+                      processingStatus === 'processing' ||
+                      processingStatus === 'embedding_completed';
 
   if (isLoading) {
     return (
@@ -28,6 +34,17 @@ export const AnomalyList = ({ documentId }: AnomalyListProps) => {
   }
 
   if (!anomalies || anomalies.length === 0) {
+    // Show different message if still analyzing
+    if (isAnalyzing) {
+      return (
+        <Alert className="bg-blue-50 border-blue-200">
+          <Clock className="h-4 w-4 text-blue-600 animate-pulse" />
+          <AlertDescription className="text-blue-800">
+            Analyzing document for risky clauses... Results will appear here shortly.
+          </AlertDescription>
+        </Alert>
+      );
+    }
     return (
       <Alert className="bg-green-50 border-green-200">
         <CheckCircle className="h-4 w-4 text-green-600" />

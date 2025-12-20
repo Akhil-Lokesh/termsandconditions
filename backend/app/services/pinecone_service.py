@@ -31,7 +31,7 @@ class PineconeService:
         self.index_name = settings.PINECONE_INDEX_NAME
         self.user_namespace = settings.PINECONE_USER_NAMESPACE
         self.baseline_namespace = settings.PINECONE_BASELINE_NAMESPACE
-        self.dimension = 1536  # OpenAI text-embedding-3-small
+        self.dimension = 1536
 
     async def initialize(self):
         """
