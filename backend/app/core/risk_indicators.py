@@ -19,35 +19,24 @@ class RiskIndicators:
                 "terminate at any time without notice",
                 "terminate your account without cause",
                 "suspend or terminate for any reason",
-                "at our sole discretion",
-                "without prior notice",
-                "immediate termination",
                 "we may terminate without liability",
-                # Additional variations (Fix #3)
                 "discontinue service at any time",
                 "cancel your access without warning",
                 "terminate immediately and without cause",
-                "suspend your account at our discretion",
-                "end your access for any reason",
                 "terminate service without explanation",
                 "we reserve the right to terminate",
-                "may be terminated at any time",
                 "terminate without prior notification",
                 "discontinue without notice or liability",
                 "suspend or cancel without reason",
                 "termination at our sole option",
-                "immediate suspension or termination",
-                "revoke access at any time",
                 "terminate your use without cause",
-                # Vague grounds patterns (100% detection)
-                "for any reason",
-                "without cause",
-                "may cancel whenever we want",
-                "we can shut down service",
-                "terminate and access",
                 "terminate your access without notice",
-                "may suspend your account",
-                "may close your account",
+                # TikTok-style soft termination language
+                "termination may happen without",
+                "suspension or termination may happen",
+                "may not give you advance notice",
+                "permanently restrict or terminate",
+                "temporarily suspend, permanently restrict",
             ],
             "description": "Company can terminate service without warning or reason",
             "severity": "high",
@@ -55,25 +44,14 @@ class RiskIndicators:
         "content_loss": {
             "keywords": [
                 "not responsible for data loss",
-                "may delete your content",
+                "may delete your content without",
                 "no backup obligation",
-                "content may be lost",
                 "not liable for deleted data",
-                # Additional variations (Fix #3)
-                "may remove your files",
-                "no responsibility for lost information",
-                "data deletion without liability",
-                "content removal without notice",
                 "no guarantee of data retention",
                 "files may be deleted at any time",
                 "no obligation to preserve content",
-                "may erase your data",
-                "content may be removed without warning",
-                "no backup or recovery obligation",
-                "not liable for lost or deleted files",
                 "data may be permanently deleted",
-                "no responsibility for content preservation",
-                "may delete without prior notice",
+                "no backup or recovery obligation",
             ],
             "description": "Risk of losing your data without compensation",
             "severity": "high",
@@ -106,22 +84,15 @@ class RiskIndicators:
             "keywords": [
                 "unlimited liability",
                 "liable for all claims",
-                "indemnify us for any",
+                "indemnify us for any and all",
                 "hold us harmless for all",
-                # Additional variations (Fix #3)
                 "responsible for any and all damages",
                 "indemnify for all losses",
-                "defend and hold harmless",
                 "assume all liability",
-                "liable for any damages",
                 "indemnify against all claims",
-                "hold harmless from any liability",
                 "bear all costs and damages",
-                "responsible for all expenses",
-                "indemnify and defend us",
-                "liable for all costs",
-                "assume full responsibility",
-                "indemnify from any loss",
+                "indemnify and defend us against",
+                "assume full responsibility for all",
                 "bear unlimited responsibility",
             ],
             "description": "You assume unlimited liability for any issues",
@@ -159,41 +130,21 @@ class RiskIndicators:
                 "change fees at any time",
                 "modify pricing without notification",
                 "raise prices without informing",
-                # Additional variations (Fix #3)
-                "adjust rates without notice",
-                "change pricing at our discretion",
                 "increase fees without warning",
-                "modify costs without notification",
-                "raise rates at any time",
-                "adjust pricing without prior notice",
-                "change subscription price",
-                "increase charges without informing",
-                "modify fees at our discretion",
-                "raise costs without notification",
-                "adjust subscription fees",
-                "change rates without warning",
                 "pricing subject to change without notice",
-                "fees may increase at any time",
-                # Hidden price change patterns (100% detection)
-                "price may increase",
-                "raise the price",
-                "we may change the price",
-                "subject to price change",
                 "price may change without notice",
-                "rates may change",
+                "change rates without warning",
+                "adjust pricing without prior notice",
             ],
             "description": "Prices can increase without advance notice",
-            "severity": "high",
+            "severity": "medium",
         },
         "forced_arbitration_class_waiver": {
             "keywords": [
                 "waive right to class action",
-                "arbitration only",
                 "no class action",
                 "individual arbitration",
                 "waive jury trial",
-                # Additional variations (Fix #3)
-                "binding arbitration",
                 "waive right to court",
                 "no class or collective action",
                 "individual basis only",
@@ -201,15 +152,14 @@ class RiskIndicators:
                 "mandatory arbitration",
                 "give up jury trial",
                 "waive class action rights",
-                "arbitration agreement",
                 "no right to join class action",
                 "individual claims only",
                 "waive right to litigate",
-                "arbitration instead of court",
                 "no consolidated proceedings",
                 "waive representative actions",
+                "past, pending, or future claims",
             ],
-            "description": "You cannot join class action lawsuits",
+            "description": "Forced arbitration eliminates courts + class actions",
             "severity": "high",
         },
         "biometric_data_collection": {
@@ -263,12 +213,11 @@ class RiskIndicators:
         },
         "cross_border_data_transfer": {
             "keywords": [
-                "transfer to china", "transfer to foreign country",
-                "store data overseas", "international data transfer",
-                "servers in china", "foreign government access",
-                "data stored abroad", "transfer outside your country",
-                "send to parent company", "share with foreign entity",
-                "data leaves your country", "overseas processing"
+                "transfer to china",
+                "servers in china",
+                "foreign government access",
+                "share with foreign entity",
+                "transfer to foreign government",
             ],
             "description": "Transfer of data to foreign countries with weak privacy laws",
             "severity": "high"
@@ -284,38 +233,296 @@ class RiskIndicators:
             "description": "Collecting data from children without proper consent",
             "severity": "high"
         },
+        # ============================================================
+        # NEW HIGH RISK PATTERNS - Added based on Meta T&C analysis
+        # ============================================================
+        "perpetual_irrevocable_license": {
+            "keywords": [
+                # The "holy trinity" of bad content licensing
+                "perpetual, irrevocable",
+                "irrevocable, perpetual",
+                "perpetual and irrevocable",
+                "irrevocable and perpetual",
+                "perpetual, irrevocable, transferable",
+                "perpetual, irrevocable, royalty-free",
+                "perpetual, irrevocable, sublicensable",
+                "irrevocable license to use",
+                "perpetual license that survives",
+                "license survives termination",
+                "even after you delete",
+                "even after account deletion",
+                "remains after you stop using",
+                "continues after termination",
+                # Explicit forever language
+                "forever license",
+                "license in perpetuity",
+                "right survives termination",
+                # Broad license combos (must be multi-word phrases)
+                "sublicensable and transferable",
+                "royalty-free, sublicensable",
+                "sublicensable license",
+                "license to use, copy, modify",
+                "reproduce, modify, adapt",
+                # AI Training (Reddit $203M+, Figma lawsuit)
+                "use your content for AI",
+                "train AI models",
+                "train our systems",
+                "use your content to train",
+                # Moral rights waiver
+                "moral rights waiver",
+                "waive moral rights",
+                "waive any rights of privacy",
+                "waive publicity rights",
+                # Commercial exploitation of user content
+                "commercial exploitation",
+                "use in advertisements",
+                "without paying you",
+                "without giving you anything in return",
+                "without any compensation",
+                # Content persistence after deletion
+                "continue after you have removed",
+                "licence granted will continue",
+                "license shall continue after",
+                "remains after you remove",
+                "persists after you delete",
+            ],
+            "description": "Perpetual irrevocable content license + AI training - you lose control FOREVER",
+            "severity": "high"
+        },
+        "explicit_account_termination": {
+            "keywords": [
+                "suspend or permanently disable your access",
+                "permanently disable or delete your account",
+                "permanently disable your account",
+                "permanently delete your account",
+                "disable your account permanently",
+                "terminate your account permanently",
+                # No appeal language
+                "without appeal",
+                "no right to reinstatement",
+                "cannot be restored",
+                "permanently banned",
+            ],
+            "description": "Company can permanently disable/delete your account with no recourse",
+            "severity": "high"
+        },
+        "unilateral_content_removal": {
+            "keywords": [
+                "delete posts without notice",
+                "remove content without warning",
+                "remove content at our discretion",
+                "take down without notice",
+                "remove your content without explanation",
+            ],
+            "description": "Company can remove your content without notice or explanation",
+            "severity": "medium"
+        },
+        "shortened_statute_limitations": {
+            "keywords": [
+                "must file within one year",
+                "claims within 1 year",
+                "within one (1) year",
+                "one year statute",
+                "one-year limitation",
+                "shorten the statute",
+                "reduced limitations period",
+                "claim must be filed within",
+                "waive longer limitation",
+                "claims must be brought within",
+                "action within one year",
+                "limitation period of one year",
+            ],
+            "description": "Shortened time period to file legal claims",
+            "severity": "high"
+        },
+        "asymmetric_jurisdiction": {
+            "keywords": [
+                "exclusive jurisdiction",
+                "you agree to litigate in",
+                "must bring claims in",
+                "waive objection to venue",
+                "submit to exclusive jurisdiction",
+            ],
+            "description": "Asymmetric jurisdiction - you must sue in company's home court",
+            "severity": "medium"
+        },
+        # ============================================================
+        # NEW HIGH RISK PATTERNS - From Comprehensive Research (24 patterns)
+        # ============================================================
+        "survival_clauses": {
+            "keywords": [
+                "survive termination", "survives expiration", "survive cancellation",
+                "obligations shall survive", "provisions survive",
+                "survives any termination", "continue after termination",
+                "remain effective after", "binding after termination",
+                # TikTok-style content persistence language
+                "continue after you have removed",
+                "licence granted will continue",
+                "license granted will continue",
+                "license shall continue after",
+                "after you have removed your content",
+                "may stay on third party",
+            ],
+            "description": "Obligations continue indefinitely after account closure",
+            "severity": "medium"
+        },
+        "fund_holds_freezing": {
+            "keywords": [
+                "hold funds for 180 days", "reserve funds", "withhold payments",
+                "freeze your account", "hold your balance", "payment reserve",
+                "funds may be held", "rolling reserve", "payout delay",
+                "hold for 90 days", "hold for 60 days", "withhold your funds",
+                "payment hold", "balance reserve", "funds withheld",
+                "account frozen", "suspend payouts", "delay disbursement"
+            ],
+            "description": "Company can freeze your money for extended periods (60-180+ days)",
+            "severity": "high"
+        },
+        "warrantless_law_enforcement": {
+            "keywords": [
+                "law enforcement without warrant",
+                "disclose to police without",
+                "emergency disclosure without",
+                "law enforcement partnership",
+                "share with authorities without",
+                "without a warrant",
+                "without judicial oversight",
+            ],
+            "exclusions": [
+                "warranty", "warranties", "disclaim", "as is", "as-is",
+                "no warranty", "without warranty", "exclusion of warranties",
+            ],
+            "description": "Data shared with law enforcement without warrant requirement",
+            "severity": "high"
+        },
+        "voice_video_retention": {
+            "keywords": [
+                "retain voice recordings", "store video indefinitely",
+                "voice data retained",
+                "employee access to recordings", "human review of recordings",
+                "voice commands stored", "video footage retained",
+                "recordings may be reviewed",
+            ],
+            "description": "Voice/video recordings stored indefinitely with employee access",
+            "severity": "high"
+        },
+        "digital_ownership_illusion": {
+            "keywords": [
+                "purchase is a license",
+                "purchased content may become unavailable",
+                "terminate upon death",
+                "no inheritance of digital",
+                "license not ownership",
+                "rights terminate upon death",
+            ],
+            "description": "Digital 'purchases' are revocable licenses, not ownership",
+            "severity": "medium"
+        },
+        "worker_misclassification": {
+            "keywords": [
+                "independent contractor", "not an employee", "no employment benefits",
+                "1099 contractor", "no workers compensation",
+                "not entitled to benefits",
+                "you are not our employee",
+                "no employer-employee relationship",
+            ],
+            "description": "Workers denied employee protections via contractor classification",
+            "severity": "medium"
+        },
+        "asymmetric_assignment": {
+            "keywords": [
+                "we may assign", "company may transfer", "assign without consent",
+                "you may not assign", "non-transferable by you",
+                "assign our rights", "transfer this agreement",
+                "you cannot assign", "your rights are not assignable",
+                "we may transfer without notice",
+            ],
+            "description": "Company can transfer your data/contract; you cannot",
+            "severity": "medium"
+        },
+        # ============================================================
+        # NEW: User-to-User License Pattern (for TikTok-style clauses)
+        # ============================================================
+        "user_content_license": {
+            "keywords": [
+                "grant to each user",
+                "grant each user",
+                "license to other users",
+                "licence to other users",
+                "other users may",
+                "other users can",
+                "each user of the platform",
+                "users of the platform a",
+                "non-exclusive, royalty-free, worldwide licence to access",
+                "non-exclusive, royalty-free, worldwide license to access",
+                "reproduce, adapt or make derivative",
+                "access and use your content",
+                "user a license to",
+                "user a licence to",
+            ],
+            "description": "Other users get rights to copy and modify your content",
+            "severity": "high"
+        },
     }
 
     # MEDIUM RISK: Concerning but common in some industries
     MEDIUM_RISK_PATTERNS = {
+        # ============================================================
+        # NEW: Account Inactivity Reclaim Pattern
+        # ============================================================
+        "account_inactivity_reclaim": {
+            "keywords": [
+                "reclaim your account",
+                "reclaim your account name",
+                "not logged in for",
+                "have not logged into",
+                "inactive for",
+                "6 months",
+                "six months",
+                "account name may be",
+                "username reclaimed",
+                "reclaim username",
+                "account dormant",
+            ],
+            "description": "Your username/account can be reclaimed after inactivity",
+            "severity": "medium"
+        },
+        # ============================================================
+        # NEW: Cross-Platform Sync Pattern
+        # ============================================================
+        "cross_platform_sync": {
+            "keywords": [
+                "sync across",
+                "settings will sync",
+                "will sync across",
+                "across each",
+                "sync across the platform",
+                "shared across services",
+                "across all services",
+                "data shared between",
+                "information shared across",
+            ],
+            "description": "Your data and settings are shared across multiple services/apps",
+            "severity": "medium"
+        },
         "auto_renewal": {
             "keywords": [
                 "automatically renew",
                 "auto-renewal",
                 "automatically extends",
                 "renews unless cancelled",
-                # Additional variations (Fix #3)
                 "automatic renewal",
                 "renews automatically",
                 "subscription continues automatically",
-                "auto-renewing subscription",
                 "will renew unless you cancel",
-                "automatically continues",
                 "renews for additional term",
-                "subscription auto-renews",
-                "automatic extension",
-                "renews on anniversary date",
-                "continues until cancelled",
-                # Hidden cost patterns (100% detection)
-                "auto-renew",
-                "will renew",
-                "renews each month unless disabled",
-                "unless you cancel",
-                "continue to charge",
-                "recurring charges",
-                "subscription fee will be charged",
+                # Cancellation friction patterns
+                "early termination fee", "cancellation fee",
+                "call to cancel", "written notice to cancel",
+                "penalty for early cancellation",
+                "cancel only by phone",
             ],
-            "description": "Subscription automatically renews (hidden recurring cost)",
+            "description": "Subscription automatically renews with cancellation friction",
             "severity": "medium",
         },
         "broad_liability_disclaimer": {
@@ -323,23 +530,20 @@ class RiskIndicators:
                 "not liable for any damages",
                 "to the fullest extent permitted by law",
                 "no warranty of any kind",
-                "use at your own risk",
-                # Additional variations (Fix #3)
                 "as is without warranty",
                 "disclaim all warranties",
                 "no liability whatsoever",
-                "not responsible for any losses",
                 "to the maximum extent allowed",
-                "provided as is",
                 "without warranties express or implied",
-                "at your sole risk",
-                "no guarantee of accuracy",
                 "disclaim liability to the fullest extent",
                 "not liable for indirect damages",
-                "use entirely at your risk",
+                "under no circumstances shall",
+                "in no event shall",
+                "consequential damages excluded",
+                "loss of profits excluded",
             ],
             "description": "Broad disclaimers limiting company liability",
-            "severity": "medium",
+            "severity": "low",
         },
         "unilateral_changes": {
             "keywords": [
@@ -347,42 +551,87 @@ class RiskIndicators:
                 "modify without notice",
                 "update terms at our discretion",
                 "revise terms without notifying",
-                # Additional variations (Fix #3)
-                "amend these terms",
-                "alter terms at any time",
                 "update without prior notice",
-                "modify at our sole discretion",
                 "change without notification",
-                "revise at any time",
-                "update or modify these terms",
                 "amend without notice",
-                "change at our discretion",
                 "modify terms without warning",
-                "reserve right to change",
-                "update these terms at any time",
+            ],
+            "exclusions": [
+                "notify you",
+                "30 days",
+                "prior notice",
+                "advance notice",
+                "reasonable notice",
+                "written notice",
+                "email notification",
             ],
             "description": "Terms can change without notice",
             "severity": "medium",
+        },
+        # NEW: Terms modification (even with notice - user should know)
+        "terms_modification": {
+            "keywords": [
+                "may modify these terms",
+                "modify these terms from time to time",
+                "may change these terms",
+                "reserve the right to modify these terms",
+                "reserve the right to change these terms",
+                "may update these terms",
+                "amend these terms",
+                "revise these terms",
+                "changes that materially affect",
+            ],
+            "description": "Company can modify terms - check how you'll be notified of changes",
+            "severity": "low",
+        },
+        # NEW: Binding arbitration (general - per inverted funnel, detect all)
+        "binding_arbitration": {
+            "keywords": [
+                "resolved by arbitration",
+                "finally resolved by arbitration",
+                "referred to arbitration",
+                "submit to arbitration",
+                "shall be arbitrated",
+                "binding arbitration",
+                "arbitration proceedings",
+                "arbitration process",
+                "arbitral tribunal",
+                "arbitration under",
+                "arbitration rules",
+                "International Chamber of Commerce",
+                "ICC arbitration",
+                "SIAC arbitration",
+                "LCIA arbitration",
+                "Hong Kong International Arbitration Centre",
+                "Singapore International Arbitration Centre",
+            ],
+            "description": "Disputes must go to arbitration instead of court",
+            "severity": "medium",
+        },
+        # NEW: Liability disclaimer (general)
+        "liability_disclaimer": {
+            "keywords": [
+                "not take responsibility",
+                "do not take responsibility",
+                "disclaim all liability",
+                "shall not be liable for any",
+                "we are not liable for any",
+                "we shall not be held liable",
+                "not be responsible for any damage",
+            ],
+            "description": "Company limits its responsibility for damages and losses",
+            "severity": "low",
         },
         "data_sharing": {
             "keywords": [
                 "share with third parties",
                 "sell your information",
-                "provide data to partners",
-                "transfer to affiliates",
-                # Additional variations (Fix #3)
-                "disclose to third parties",
-                "share personal information",
                 "sell or share your data",
-                "provide to business partners",
-                "transfer data to affiliates",
-                "share with service providers",
-                "disclose information to partners",
                 "sell personal data",
                 "share with advertisers",
-                "transfer to related companies",
+                "share personal information with third",
                 "provide data to third party",
-                "share information with partners",
+                "disclose personal information to",
             ],
             "description": "Your data may be shared or sold",
             "severity": "medium",
@@ -413,23 +662,12 @@ class RiskIndicators:
         },
         "broad_usage_rights": {
             "keywords": [
-                "perpetual license",
-                "irrevocable right",
                 "use your content for any purpose",
-                "worldwide, royalty-free license",
-                # Additional variations (Fix #3)
-                "unlimited license",
-                "perpetual and irrevocable",
-                "worldwide license",
-                "royalty-free right",
-                "use in any manner",
-                "unrestricted license",
-                "perpetual right to use",
-                "irrevocable license to use",
-                "use for commercial purposes",
+                "unlimited license to your content",
+                "unrestricted license to use your",
+                "use your content in any manner",
                 "sublicense your content",
-                "worldwide perpetual license",
-                "non-exclusive perpetual license",
+                "worldwide perpetual license to your",
             ],
             "description": "Company gets broad rights to your content",
             "severity": "medium",
@@ -440,17 +678,8 @@ class RiskIndicators:
                 "track your usage",
                 "analyze your behavior",
                 "log all interactions",
-                # Additional variations (Fix #3)
-                "track your actions",
                 "monitor communications",
                 "record your activity",
-                "analyze usage patterns",
-                "monitor and analyze",
-                "track and monitor",
-                "log user activity",
-                "collect usage data",
-                "monitor your use",
-                "record all interactions",
                 "track browsing behavior",
                 "analyze user behavior",
             ],
@@ -618,13 +847,158 @@ class RiskIndicators:
         },
         "sensitive_data_categories": {
             "keywords": [
-                "health information", "medical data", "financial data",
+                "collect health information", "collect medical data",
                 "sexual orientation", "religious beliefs", "political views",
                 "racial data", "genetic information", "union membership",
                 "sensitive personal data", "special category data"
             ],
             "description": "Collection of sensitive personal data categories",
             "severity": "medium"
+        },
+        # ============================================================
+        # NEW MEDIUM RISK PATTERNS - Added based on Meta T&C analysis
+        # ============================================================
+        "slow_content_deletion": {
+            "keywords": [
+                # Slow deletion timeline (Meta Section 3.3)
+                "up to 90 days to delete",
+                "90 days to remove",
+                "may take up to 90 days",
+                "another 90 days",
+                "remove from backups",
+                "delete from backups",
+                "backup and disaster recovery",
+                "backup systems",
+                "residual copies",
+                "may remain in backups",
+                "archived copies",
+                "cached content",
+                "180 days",
+                "several months to delete",
+                "deletion process takes",
+                "not immediately deleted",
+                "deletion may take time",
+            ],
+            "description": "Content deletion takes extended time (90-180 days) due to backup systems",
+            "severity": "medium"
+        },
+        "indefinite_data_retention": {
+            "keywords": [
+                # Indefinite retention under legal excuse
+                "retain indefinitely",
+                "preserve for legal",
+                "legal obligations for preservation",
+                "record-keeping obligations",
+                "retain for compliance",
+                "keep data indefinitely",
+                "no time limit on retention",
+                "retain as long as necessary",
+                "indefinite retention",
+                "preserve evidence",
+                "legal hold",
+                "regulatory retention",
+            ],
+            "description": "Company can retain your data indefinitely under vague legal justification",
+            "severity": "medium"
+        },
+        "broad_content_license": {
+            "keywords": [
+                "worldwide, royalty-free license",
+                "worldwide, non-exclusive, royalty-free",
+                "sublicensable, transferable license",
+                "license to use, copy, modify",
+                "create derivative works",
+                "commercially exploit your content",
+                "license to your content",
+                "grant us a license to use",
+                "you grant us a worldwide",
+            ],
+            "description": "Broad content licensing rights (sublicensable, worldwide, royalty-free)",
+            "severity": "medium"
+        },
+        # ============================================================
+        # NEW MEDIUM RISK PATTERNS - From Comprehensive Research
+        # ============================================================
+        "hipaa_coverage_gap": {
+            "keywords": [
+                "not HIPAA covered", "not subject to HIPAA", "wellness app",
+                "health data not protected", "consumer health app",
+                "not a covered entity", "non-clinical services",
+                "not a healthcare provider", "wellness services",
+                "fitness tracking", "health information not regulated"
+            ],
+            "description": "Health data lacks HIPAA protection - can be shared with employers/insurers",
+            "severity": "medium"
+        },
+        "data_throttling": {
+            "keywords": [
+                "deprioritization", "may reduce speeds", "network management",
+                "throttle data", "slower speeds during congestion",
+                "unlimited plan may be slowed", "prioritization",
+                "data may be slowed", "network congestion",
+                "reduced speeds", "data speeds limited"
+            ],
+            "description": "Unlimited data plans subject to throttling/deprioritization",
+            "severity": "medium"
+        },
+        "p2p_scam_liability": {
+            "keywords": [
+                "authorized transaction", "you authorized the transfer",
+                "scam not covered", "fraud protection limited",
+                "only unauthorized covered", "authorized payments final",
+                "you initiated the payment", "your responsibility",
+                "not liable for authorized", "fraud by third party"
+            ],
+            "description": "No protection if you're tricked into sending money (scams)",
+            "severity": "medium"
+        },
+        "fdic_passthrough": {
+            "keywords": [
+                "partner bank", "FDIC pass-through", "funds held at",
+                "third-party custodian", "banking partner", "member FDIC",
+                "not directly insured", "held by partner",
+                "banking services provided by", "deposits held at"
+            ],
+            "description": "FDIC protection depends on partner bank records (Synapse risk)",
+            "severity": "medium"
+        },
+        "crypto_bankruptcy_risk": {
+            "keywords": [
+                "unsecured creditor", "no SIPC protection", "no FDIC for crypto",
+                "bankruptcy", "insolvency", "customer assets may be",
+                "not segregated", "general creditor",
+                "cryptocurrency not insured", "digital assets risk",
+                "no deposit insurance"
+            ],
+            "description": "Crypto holdings unprotected in company bankruptcy",
+            "severity": "medium"
+        },
+        # ============================================================
+        # NEW: Specific Liability Limitation Pattern (TikTok-style)
+        # ============================================================
+        "liability_limitation_specific": {
+            "keywords": [
+                "do not take responsibility for any loss",
+                "not take responsibility for any damage",
+                "we do not take responsibility",
+                "not responsible for loss or damage",
+            ],
+            "description": "Company specifically disclaims responsibility for losses/damages",
+            "severity": "low"
+        },
+        # ============================================================
+        # NEW: No Content Guarantee Pattern (TikTok-style)
+        # ============================================================
+        "no_content_guarantee": {
+            "keywords": [
+                "does not promise that",
+                "do not promise that",
+                "not suited to your purpose",
+                "does not represent our views",
+                "no guarantees about accuracy",
+            ],
+            "description": "No guarantees about accuracy, legality, or quality of content",
+            "severity": "low"
         },
     }
 
@@ -658,6 +1032,68 @@ class RiskIndicators:
         },
     }
 
+    # ============================================================
+    # DANGEROUS PATTERN CLUSTERS - Compound Risk Detection
+    # When multiple patterns appear together, risk compounds
+    # ============================================================
+    DANGEROUS_PATTERN_CLUSTERS = {
+        "legal_immunity_cluster": {
+            "patterns": [
+                "forced_arbitration_class_waiver", "broad_liability_disclaimer",
+                "unlimited_liability", "asymmetric_jurisdiction"
+            ],
+            "description": "Near-complete legal immunity - makes any legal recourse impossible",
+            "combined_severity": "critical",
+            "min_patterns": 2  # Need at least 2 patterns to trigger
+        },
+        "content_exploitation_cluster": {
+            "patterns": [
+                "perpetual_irrevocable_license", "survival_clauses",
+                "asymmetric_assignment", "broad_content_license"
+            ],
+            "description": "Permanent content control transferred to company forever",
+            "combined_severity": "critical",
+            "min_patterns": 2
+        },
+        "financial_trap_cluster": {
+            "patterns": [
+                "auto_renewal", "fund_holds_freezing", "explicit_account_termination",
+                "unilateral_termination"
+            ],
+            "description": "Maximum financial extraction with no recourse",
+            "combined_severity": "critical",
+            "min_patterns": 2
+        },
+        "surveillance_cluster": {
+            "patterns": [
+                "data_sharing", "warrantless_law_enforcement",
+                "voice_video_retention", "biometric_data_collection",
+                "browsing_history_tracking", "device_fingerprinting"
+            ],
+            "description": "Comprehensive surveillance with law enforcement access",
+            "combined_severity": "critical",
+            "min_patterns": 3
+        },
+        "worker_exploitation_cluster": {
+            "patterns": [
+                "worker_misclassification", "forced_arbitration_class_waiver",
+                "unlimited_liability", "unilateral_termination"
+            ],
+            "description": "Gig worker exploitation - no benefits, no recourse, no job security",
+            "combined_severity": "critical",
+            "min_patterns": 2
+        },
+        "digital_ownership_trap": {
+            "patterns": [
+                "digital_ownership_illusion", "unilateral_termination",
+                "unilateral_changes", "explicit_account_termination"
+            ],
+            "description": "Your 'purchases' can be revoked at any time for any reason",
+            "combined_severity": "high",
+            "min_patterns": 2
+        }
+    }
+
     def __init__(self):
         """Initialize risk indicators."""
         self.high_risk = self.HIGH_RISK_PATTERNS
@@ -665,7 +1101,7 @@ class RiskIndicators:
         self.context_dependent = self.CONTEXT_DEPENDENT_PATTERNS
 
     def detect_indicators(
-        self, clause_text: str, service_type: str = "general"
+        self, clause_text: str, service_type: str = "general", section_name: str = ""
     ) -> List[Dict]:
         """
         Detect all risk indicators in a clause.
@@ -673,34 +1109,93 @@ class RiskIndicators:
         Args:
             clause_text: The clause text to analyze
             service_type: Type of service (for context-dependent patterns)
+            section_name: Name of the section (for boilerplate detection)
 
         Returns:
             List of detected indicators with severity and description
         """
+        from .constants import WHITELIST_PATTERNS, SKIP_SINGLE_KEYWORDS, BOILERPLATE_SECTIONS
+
         detected = []
         text_lower = clause_text.lower()
+        section_lower = section_name.lower().strip() if section_name else ""
+
+        # ============================================================
+        # WHITELIST CHECK: Skip flagging for standard/safe content
+        # ============================================================
+        for whitelist_category, whitelist_terms in WHITELIST_PATTERNS.items():
+            for term in whitelist_terms:
+                if term.lower() in text_lower:
+                    # This clause contains whitelisted content (spam protection, etc.)
+                    # Only skip if it's PRIMARILY about the whitelisted topic
+                    if len(text_lower) < 500:  # Short clause = probably just about this topic
+                        return []  # Skip detection entirely for safe content
+
+        # ============================================================
+        # BOILERPLATE SECTION CHECK: Reduce sensitivity for standard sections
+        # ============================================================
+        is_boilerplate_section = any(
+            bp_section in section_lower for bp_section in BOILERPLATE_SECTIONS
+        )
+
+        # Import critical patterns to know which ones should never be skipped
+        from .constants import CriticalPatterns
 
         # Check HIGH RISK patterns
         for indicator_name, pattern_data in self.high_risk.items():
             if self._matches_pattern(text_lower, pattern_data["keywords"]):
+                # Check for exclusions (pro-consumer language that negates the risk)
+                exclusions = pattern_data.get("exclusions", [])
+                if exclusions and self._matches_pattern(text_lower, exclusions):
+                    # Has pro-consumer protection, skip this indicator
+                    continue
+
+                # Normalize indicator name for comparison
+                indicator_normalized = indicator_name.lower().replace('-', '_').replace(' ', '_')
+
+                # Check if this is a CRITICAL pattern that should never be skipped
+                is_critical = indicator_normalized in CriticalPatterns.ALWAYS_CRITICAL
+
+                # BOILERPLATE SKIP: Skip non-critical patterns in boilerplate sections
+                if is_boilerplate_section and not is_critical:
+                    continue  # Skip this indicator in boilerplate sections
+
+                # Use the pattern's own severity (some HIGH_RISK patterns were downgraded to medium)
+                pattern_severity = pattern_data.get("severity", "high")
+                if is_critical:
+                    pattern_severity = "critical"
+
                 detected.append(
                     {
                         "indicator": indicator_name,
-                        "severity": "high",
+                        "severity": pattern_severity,
                         "description": pattern_data["description"],
-                        "category": "high_risk",
+                        "category": "high_risk" if pattern_severity in ("high", "critical") else "medium_risk",
+                        "is_critical_pattern": is_critical,
                     }
                 )
 
         # Check MEDIUM RISK patterns
         for indicator_name, pattern_data in self.medium_risk.items():
             if self._matches_pattern(text_lower, pattern_data["keywords"]):
+                # Check for exclusions (pro-consumer language that negates the risk)
+                exclusions = pattern_data.get("exclusions", [])
+                if exclusions and self._matches_pattern(text_lower, exclusions):
+                    # Has pro-consumer protection, skip this indicator
+                    continue
+
+                # BOILERPLATE SKIP: Skip medium risk patterns in boilerplate sections
+                if is_boilerplate_section:
+                    continue  # Skip medium risk indicators in boilerplate sections
+
+                # Use the pattern's own severity (some may have been set to low)
+                medium_pattern_severity = pattern_data.get("severity", "medium")
                 detected.append(
                     {
                         "indicator": indicator_name,
-                        "severity": "medium",
+                        "severity": medium_pattern_severity,
                         "description": pattern_data["description"],
-                        "category": "medium_risk",
+                        "category": "medium_risk" if medium_pattern_severity == "medium" else "low_risk",
                     }
                 )
 
@@ -733,7 +1228,7 @@ class RiskIndicators:
         for keyword in keywords:
             # Remove punctuation and extra spaces for matching
             keyword_clean = re.sub(r"[^\w\s]", " ", keyword.lower())
-            text_clean = re.sub(r"[^\w\s]", " ", text)
+            text_clean = re.sub(r"[^\w\s]", " ", text.lower())  # FIXED: lowercase text for case-insensitive matching
 
             # Check for phrase match (all words present in order)
             keyword_words = keyword_clean.split()
@@ -753,7 +1248,7 @@ class RiskIndicators:
                     positions = [
                         i for i, w in enumerate(text_words) if w in keyword_words
                     ]
-                    if positions and max(positions) - min(positions) < 20:
+                    if positions and max(positions) - min(positions) < 20:  # Keep tight proximity for accuracy
                         return True
 
         return False
@@ -799,3 +1294,42 @@ class RiskIndicators:
 
         # Cap at 10
         return min(score, 10.0)
+
+    def detect_pattern_clusters(self, detected_patterns: List[str]) -> List[Dict]:
+        """
+        Detect dangerous combinations of patterns that compound risk.
+
+        When multiple patterns from a cluster appear together, the combined
+        risk is greater than the sum of individual patterns.
+
+        Args:
+            detected_patterns: List of pattern names that were detected
+
+        Returns:
+            List of detected clusters with metadata
+        """
+        detected_clusters = []
+
+        for cluster_name, cluster_info in self.DANGEROUS_PATTERN_CLUSTERS.items():
+            matching_patterns = [
+                p for p in cluster_info["patterns"]
+                if p in detected_patterns
+            ]
+
+            min_required = cluster_info.get("min_patterns", 2)
+
+            if len(matching_patterns) >= min_required:
+                detected_clusters.append({
+                    "cluster": cluster_name,
+                    "description": cluster_info["description"],
+                    "severity": cluster_info["combined_severity"],
+                    "patterns_found": matching_patterns,
+                    "patterns_possible": cluster_info["patterns"],
+                    "coverage": f"{len(matching_patterns)}/{len(cluster_info['patterns'])}",
+                    "coverage_ratio": len(matching_patterns) / len(cluster_info["patterns"])
+                })
+
+        # Sort by coverage ratio (most complete clusters first)
+        detected_clusters.sort(key=lambda x: x["coverage_ratio"], reverse=True)
+
+        return detected_clusters

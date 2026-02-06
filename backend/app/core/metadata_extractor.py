@@ -1,7 +1,7 @@
 """
 Metadata extractor for T&C documents.
 
-Uses GPT-4 to extract structured metadata from Terms & Conditions documents:
+Uses Claude to extract structured metadata from Terms & Conditions documents:
 - Company name
 - Jurisdiction
 - Effective date
@@ -15,7 +15,7 @@ import logging
 from typing import Dict, Any, Optional
 from datetime import datetime
 
-from app.services.openai_service import OpenAIService
+from app.services.claude_service import ClaudeService
 from app.prompts.metadata_prompts import (
     METADATA_EXTRACTION_PROMPT,
     CLAUSE_TYPE_CLASSIFICATION_PROMPT,
@@ -26,16 +26,16 @@ logger = logging.getLogger(__name__)
 
 
 class MetadataExtractor:
-    """Extracts metadata from T&C documents using GPT-4."""
+    """Extracts metadata from T&C documents using Claude."""
 
-    def __init__(self, openai_service: OpenAIService):
+    def __init__(self, claude_service: ClaudeService):
         """
         Initialize metadata extractor.
 
         Args:
-            openai_service: OpenAI service instance for LLM calls
+            claude_service: Claude service instance for LLM calls
         """
-        self.openai = openai_service
+        self.claude = claude_service
 
     async def extract_metadata(self, text: str) -> Dict[str, Any]:
         """
@@ -60,10 +60,9 @@ class MetadataExtractor:
             # Build prompt
             prompt = METADATA_EXTRACTION_PROMPT.format(text_preview=text_preview)
 
-            # Call GPT-4 for structured extraction
-            metadata = await self.openai.create_structured_completion(
+            # Call Claude for structured extraction
+            metadata = await self.claude.create_structured_completion(
                 prompt=prompt,
-                model=self.openai.gpt4_model,
                 temperature=0.0,  # Deterministic for consistency
             )
 
@@ -99,10 +98,9 @@ class MetadataExtractor:
             # Build prompt
             prompt = CLAUSE_TYPE_CLASSIFICATION_PROMPT.format(clause_text=clause_text)
 
-            # Call GPT-4 for classification
-            category = await self.openai.create_completion(
+            # Call Claude for classification
+            category = await self.claude.create_completion(
                 prompt=prompt,
-                model=self.openai.gpt35_model,  # Use GPT-3.5 for simple classification
                 temperature=0.0,
                 max_tokens=50,
             )
@@ -142,7 +140,7 @@ class MetadataExtractor:
         Clean and validate extracted metadata.
 
         Args:
-            metadata: Raw metadata from GPT-4
+            metadata: Raw metadata from Claude
 
         Returns:
             Cleaned metadata dict

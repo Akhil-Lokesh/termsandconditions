@@ -1,5 +1,5 @@
 """
-Cache manager for GPT-5 analysis results.
+Cache manager for Claude analysis results.
 
 Caches analysis results to avoid redundant API calls for:
 - Duplicate documents (same text hash)
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 class AnalysisCacheManager:
     """
-    Manages caching of GPT-5 analysis results.
+    Manages caching of Claude analysis results.
 
     Cache strategy:
     - Key: Hash of document text
@@ -37,9 +37,9 @@ class AnalysisCacheManager:
     DOCUMENT_HASH_TTL = timedelta(days=30)  # 30 days for document hashes
 
     # Cache key prefixes
-    PREFIX_ANALYSIS = "gpt5:analysis:"
-    PREFIX_HASH = "gpt5:hash:"
-    PREFIX_STATS = "gpt5:stats:"
+    PREFIX_ANALYSIS = "claude:analysis:"
+    PREFIX_HASH = "claude:hash:"
+    PREFIX_STATS = "claude:stats:"
 
     def __init__(self, cache_service: Optional[CacheService] = None):
         """

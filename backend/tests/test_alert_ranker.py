@@ -37,8 +37,7 @@ class TestAlertRanker:
         """Test initialization with defaults."""
         ranker = AlertRanker()
 
-        assert ranker.MAX_ALERTS == 10
-        assert ranker.TARGET_ALERTS == 5
+        assert ranker.MAX_ALERTS == 100
         assert ranker.user_preferences == {}
 
     def test_init_with_preferences(self):
@@ -93,9 +92,9 @@ class TestAlertRanker:
         assert len(result['high_severity']) == 3
         assert len(result['suppressed']) == 0
 
-    def test_rank_and_filter_exceeds_target(self, ranker):
-        """Test ranking when high confidence exceeds TARGET_ALERTS."""
-        # Create 8 HIGH confidence anomalies (TARGET_ALERTS = 5)
+    def test_rank_and_filter_exceeds_budget(self, ranker):
+        """Test ranking when anomaly count exceeds MAX_ALERTS budget."""
+        # Create 8 HIGH confidence anomalies
         anomalies = [
             {
                 'clause_number': f'1.{i}',
@@ -367,20 +366,18 @@ class TestAlertRanker:
 
     def test_adjust_budget(self, ranker):
         """Test adjusting alert budget dynamically."""
-        assert ranker.MAX_ALERTS == 10
-        assert ranker.TARGET_ALERTS == 5
+        assert ranker.MAX_ALERTS == 100
 
-        ranker.adjust_budget(max_alerts=15, target_alerts=8)
+        ranker.adjust_budget(max_alerts=15)
 
         assert ranker.MAX_ALERTS == 15
-        assert ranker.TARGET_ALERTS == 8
 
     def test_severity_weights(self, ranker):
         """Test severity weight constants."""
         assert ranker.SEVERITY_WEIGHTS['low'] == 1.0
         assert ranker.SEVERITY_WEIGHTS['medium'] == 2.0
-        assert ranker.SEVERITY_WEIGHTS['high'] == 3.0
-        assert ranker.SEVERITY_WEIGHTS['critical'] == 4.0
+        assert ranker.SEVERITY_WEIGHTS['high'] == 3.5
+        assert ranker.SEVERITY_WEIGHTS['critical'] == 6.0
 
     def test_bonus_constants(self, ranker):
         """Test bonus score constants."""

@@ -35,7 +35,7 @@ from app.core.document_pipeline import DocumentProcessingPipeline
 from app.models.user import User
 from app.models.document import Document
 from app.models.clause import Clause
-from app.schemas.document import DocumentResponse, DocumentCreate, DocumentListResponse
+from app.schemas.document import DocumentResponse, DocumentCreate, DocumentListResponse, TextUploadRequest
 from app.services.embedding_service import EmbeddingService
 from app.services.pinecone_service import PineconeService
 from app.services.claude_service import ClaudeService
@@ -145,7 +145,11 @@ async def run_anomaly_detection_background(
         company_name = metadata.get("company", "Unknown")
 
         # Detect anomalies - returns comprehensive report dict
-        detector = AnomalyDetector(embedding_service, pinecone_service, db)
+        detector = AnomalyDetector(
+            embedding_service=embedding_service,
+            pinecone_service=pinecone_service,
+            db=db
+        )
         detection_result = await detector.detect_anomalies(
             document_id=document_id,
             sections=sections,
@@ -395,6 +399,155 @@ async def upload_document(
         if Path(temp_dir).exists():
             os.rmdir(temp_dir)
         logger.info("Temp files cleaned up")
+
+
+@router.post(
+    "/text",
+    response_model=DocumentResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Upload T&C Text",
+    description="""
+    Upload Terms & Conditions as raw text for analysis.
+
+    **Use this when:** You want to paste T&C text directly instead of uploading a PDF.
+
+    **Processing Pipeline:**
+    1. Validate text length (minimum 100 characters)
+    2. Parse document structure (sections, clauses)
+    3. Create semantic chunks with metadata
+    4. Generate embeddings (local sentence-transformers)
+    5. Extract metadata (company, jurisdiction, dates) using Claude
+    6. Store vectors in Pinecone (user_tcs namespace)
+    7. Run anomaly detection (compare to baseline corpus)
+    8. Save analysis results to database
+
+    **Returns:** Document metadata with anomaly count and processing status
+    """,
+)
+async def upload_text(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    text_upload: TextUploadRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+    embedding_service: EmbeddingService = Depends(get_embedding_service),
+    pinecone_service: PineconeService = Depends(get_pinecone_service),
+    claude_service: ClaudeService = Depends(get_claude_service),
+):
+    """
+    Upload and process T&C text directly (without PDF).
+    """
+    logger.info(f"Text upload started by user: {current_user.email}")
+
+    text = text_upload.text.strip()
+    title = text_upload.title or "Pasted Terms & Conditions"
+
+    # Validate text length
+    if len(text) < 100:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Text too short. Please provide at least 100 characters of T&C text.",
+        )
+
+    if len(text) > 500000:  # ~500KB of text
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Text too long. Maximum 500,000 characters allowed.",
+        )
+
+    # Generate unique document ID
+    doc_id = str(uuid.uuid4())
+
+    try:
+        # Run the processing pipeline for text
+        pipeline = DocumentProcessingPipeline(embedding_service, pinecone_service, claude_service)
+        result = await pipeline.process_text(text, doc_id, title)
+
+        # Generate document title from metadata if not provided by user
+        if text_upload.title:
+            # User provided a custom title
+            doc_title = text_upload.title
+        else:
+            # Use extracted company name + "Terms & Conditions"
+            company_name = result.metadata.get("company_name") or result.metadata.get("company")
+            if company_name and company_name.lower() not in ["unknown", "not specified", ""]:
+                doc_title = f"{company_name} Terms & Conditions"
+            else:
+                doc_title = "Pasted Terms & Conditions"
+
+        # Save document and clauses to database
+        document = Document(
+            id=doc_id,
+            user_id=current_user.id,
+            filename=f"{doc_title}.txt",
+            text=result.text,
+            document_metadata=result.metadata,
+            page_count=result.page_count,
+            clause_count=result.num_clauses,
+            processing_status="embedding_completed",
+        )
+
+        db.add(document)
+        for clause_record in result.clause_records:
+            db.add(clause_record)
+        db.commit()
+        db.refresh(document)
+
+        logger.info(f"Document and {len(result.clause_records)} clauses saved: {doc_id}")
+
+        # Schedule background anomaly detection
+        document.processing_status = "analyzing_anomalies"
+        db.commit()
+
+        background_tasks.add_task(
+            run_anomaly_detection_background,
+            document_id=doc_id,
+            sections=result.sections,
+            metadata=result.metadata,
+            embedding_service=embedding_service,
+            pinecone_service=pinecone_service,
+        )
+
+        logger.info(f"Text upload complete: {doc_id} (anomaly detection in background)")
+
+        return DocumentResponse(
+            id=doc_id,
+            filename=f"{doc_title}.txt",
+            metadata=result.metadata,
+            page_count=result.page_count,
+            clause_count=result.num_clauses,
+            anomaly_count=0,  # Will be populated when background task completes
+            processing_status="analyzing_anomalies",
+            created_at=document.created_at,
+        )
+
+    except DocumentProcessingError as e:
+        logger.error(f"Text processing error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e),
+        )
+
+    except EmbeddingError as e:
+        logger.error(f"Embedding generation failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Failed to generate embeddings. Embedding service may be unavailable.",
+        )
+
+    except PineconeError as e:
+        logger.error(f"Vector storage failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Failed to store document vectors. Pinecone service may be unavailable.",
+        )
+
+    except Exception as e:
+        logger.error(f"Unexpected error during text processing: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Text processing failed: {str(e)}",
+        )
 
 
 @router.get(

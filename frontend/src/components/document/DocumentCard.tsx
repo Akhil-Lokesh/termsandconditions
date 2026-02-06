@@ -1,10 +1,16 @@
 import { Link } from 'react-router-dom';
 import { Document } from '@/types';
 import { useDeleteDocument } from '@/hooks/useDocuments';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { FileText, Calendar, AlertTriangle, Trash2, ArrowRight } from 'lucide-react';
+import {
+  FileText,
+  Calendar,
+  AlertTriangle,
+  Trash2,
+  ArrowRight,
+  Building2,
+  Layers
+} from 'lucide-react';
 import { formatRelativeTime } from '@/utils/formatters';
 import {
   AlertDialog,
@@ -30,83 +36,154 @@ export const DocumentCard = ({ document }: DocumentCardProps) => {
   };
 
   const anomalyCount = document.anomaly_count || 0;
-  const severityVariant = anomalyCount > 5 ? 'destructive' : anomalyCount > 0 ? 'default' : 'secondary';
+
+  // Determine risk level styling
+  const getRiskStyle = () => {
+    if (anomalyCount > 5) {
+      return {
+        bgClass: 'bg-red-500/10 border-red-500/30',
+        textClass: 'text-red-500',
+        dotClass: 'bg-red-500',
+        label: 'High Risk'
+      };
+    } else if (anomalyCount > 0) {
+      return {
+        bgClass: 'bg-amber-500/10 border-amber-500/30',
+        textClass: 'text-amber-500',
+        dotClass: 'bg-amber-500',
+        label: 'Medium Risk'
+      };
+    } else {
+      return {
+        bgClass: 'bg-emerald-500/10 border-emerald-500/30',
+        textClass: 'text-emerald-500',
+        dotClass: 'bg-emerald-500',
+        label: 'Low Risk'
+      };
+    }
+  };
+
+  const riskStyle = getRiskStyle();
 
   return (
-    <Card className="hover:shadow-md transition-shadow">
-      <CardHeader>
-        <div className="flex items-start justify-between">
-          <div className="flex items-start gap-3 flex-1">
-            <FileText className="h-5 w-5 text-primary mt-1" />
-            <div className="flex-1 min-w-0">
-              <CardTitle className="text-lg truncate">{document.filename}</CardTitle>
-              <CardDescription className="flex items-center gap-2 mt-1">
-                <Calendar className="h-3 w-3" />
-                {formatRelativeTime(document.created_at)}
-              </CardDescription>
+    <div className="card-interactive rounded-xl border border-border/50 overflow-hidden group">
+      {/* Header with risk indicator */}
+      <div className="p-4 lg:p-5 pb-3 lg:pb-4">
+        <div className="flex items-start gap-2.5 lg:gap-3">
+          {/* Document icon with glow */}
+          <div className="relative hidden sm:block">
+            <div className="absolute inset-0 bg-primary/20 blur-lg rounded-lg opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div className="relative p-2 lg:p-2.5 rounded-lg bg-primary/10 border border-primary/20">
+              <FileText className="h-4 w-4 lg:h-5 lg:w-5 text-primary" />
             </div>
           </div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Metadata */}
-        <div className="space-y-2 text-sm">
-          {document.metadata.company && (
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Company:</span>
-              <span className="font-medium">{document.metadata.company}</span>
+
+          {/* Title and timestamp */}
+          <div className="flex-1 min-w-0">
+            <h3 className="font-display font-semibold text-sm lg:text-base text-foreground truncate group-hover:text-primary transition-colors">
+              {document.filename}
+            </h3>
+            <div className="flex items-center gap-1.5 mt-1 text-[10px] lg:text-xs text-muted-foreground font-mono">
+              <Calendar className="h-3 w-3" />
+              <span>{formatRelativeTime(document.created_at)}</span>
             </div>
-          )}
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Pages:</span>
-            <span className="font-medium">{document.page_count}</span>
           </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Clauses:</span>
-            <span className="font-medium">{document.clause_count}</span>
+
+          {/* Risk badge */}
+          <div className={`flex items-center gap-1 lg:gap-1.5 px-2 lg:px-2.5 py-0.5 lg:py-1 rounded-full border ${riskStyle.bgClass}`}>
+            <div className={`w-1.5 h-1.5 rounded-full ${riskStyle.dotClass} animate-pulse`} />
+            <span className={`text-[10px] lg:text-xs font-mono font-medium ${riskStyle.textClass}`}>
+              {riskStyle.label}
+            </span>
           </div>
         </div>
+      </div>
 
-        {/* Anomaly Badge */}
-        <div className="flex items-center gap-2">
-          <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-          <Badge variant={severityVariant}>
-            {anomalyCount} {anomalyCount === 1 ? 'anomaly' : 'anomalies'}
-          </Badge>
-        </div>
+      {/* Stats grid */}
+      <div className="px-4 lg:px-5 py-3 lg:py-4 border-t border-border/30 bg-muted/20">
+        <div className="grid grid-cols-3 gap-3 lg:gap-4">
+          {/* Company */}
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <Building2 className="h-3 w-3" />
+              <span className="text-[10px] font-mono uppercase tracking-wider">Company</span>
+            </div>
+            <p className="text-sm font-medium text-foreground truncate">
+              {document.metadata?.company || 'Unknown'}
+            </p>
+          </div>
 
-        {/* Actions */}
-        <div className="flex gap-2 pt-2">
-          <Button asChild className="flex-1">
-            <Link to={`/documents/${document.id}`}>
-              View Details
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Link>
-          </Button>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="outline" size="icon" disabled={deleteMutation.isPending}>
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Delete Document</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Are you sure you want to delete "{document.filename}"? This action cannot be
-                  undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                  Delete
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          {/* Clauses */}
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <Layers className="h-3 w-3" />
+              <span className="text-[10px] font-mono uppercase tracking-wider">Clauses</span>
+            </div>
+            <p className="text-sm font-data font-medium text-foreground">
+              {document.clause_count || 0}
+            </p>
+          </div>
+
+          {/* Anomalies */}
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <AlertTriangle className="h-3 w-3" />
+              <span className="text-[10px] font-mono uppercase tracking-wider">Anomalies</span>
+            </div>
+            <p className={`text-sm font-data font-medium ${riskStyle.textClass}`}>
+              {anomalyCount}
+            </p>
+          </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+
+      {/* Actions */}
+      <div className="p-3 lg:p-4 border-t border-border/30 flex gap-2">
+        <Button
+          asChild
+          className="flex-1 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 hover:border-primary/40 transition-all text-xs lg:text-sm"
+          variant="ghost"
+          size="sm"
+        >
+          <Link to={`/documents/${document.id}`} className="flex items-center justify-center">
+            <span>View Analysis</span>
+            <ArrowRight className="ml-2 h-3.5 w-3.5 lg:h-4 lg:w-4 group-hover:translate-x-0.5 transition-transform" />
+          </Link>
+        </Button>
+
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              disabled={deleteMutation.isPending}
+              className="h-8 w-8 lg:h-9 lg:w-9 text-muted-foreground hover:text-destructive hover:bg-destructive/10 border border-border/50 hover:border-destructive/30 transition-colors"
+            >
+              <Trash2 className="h-3.5 w-3.5 lg:h-4 lg:w-4" />
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent className="bg-card border-border/50">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="font-display">Delete Document</AlertDialogTitle>
+              <AlertDialogDescription className="text-muted-foreground">
+                Are you sure you want to delete "{document.filename}"? This action cannot be
+                undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel className="bg-muted/50 border-border/50 hover:bg-muted">
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDelete}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    </div>
   );
 };

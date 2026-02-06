@@ -23,20 +23,18 @@ class AlertRanker:
     confidence, user preferences, and contextual factors.
 
     Constants:
-        MAX_ALERTS: Maximum total alerts to show (10)
-        TARGET_ALERTS: Target number of high-priority alerts (5)
+        MAX_ALERTS: Maximum total alerts to show (100)
     """
 
-    # Alert budget constants (set high to show all anomalies)
-    MAX_ALERTS = 100  # Increased from 10 to show all anomalies
-    TARGET_ALERTS = 50  # Increased from 5
+    # Alert budget constant (set high to show all anomalies)
+    MAX_ALERTS = 100
 
-    # Severity weights for scoring
+    # Severity weights for scoring (increased gap for critical)
     SEVERITY_WEIGHTS = {
         'low': 1.0,
         'medium': 2.0,
-        'high': 3.0,
-        'critical': 4.0
+        'high': 3.5,      # Increased from 3.0
+        'critical': 6.0   # Increased from 4.0 - much bigger gap to prioritize truly critical
     }
 
     # Bonus scores for special conditions
@@ -78,7 +76,7 @@ class AlertRanker:
         self.user_preferences = user_preferences or {}
         logger.info(
             f"Alert ranker initialized "
-            f"(MAX_ALERTS={self.MAX_ALERTS}, TARGET_ALERTS={self.TARGET_ALERTS})"
+            f"(MAX_ALERTS={self.MAX_ALERTS})"
         )
 
     def rank_and_filter(
@@ -116,16 +114,19 @@ class AlertRanker:
         if document_context is None:
             document_context = {}
 
-        # STEP 1: Combine regular anomalies and compound risks
+        # STEP 1: Process regular anomalies (compound risks kept separate, not added as anomalies)
+        # This prevents compound risks from inflating anomaly counts
         all_anomalies = list(calibrated_anomalies)
 
+        # Keep track of compound risks separately for the report
+        compound_risk_alerts = []
         if compound_risks:
-            logger.info(f"Converting {len(compound_risks)} compound risks to anomalies")
+            logger.info(f"Processing {len(compound_risks)} compound risks (kept separate from anomaly count)")
             for compound_risk in compound_risks:
-                anomaly = self._convert_compound_to_anomaly(compound_risk)
-                all_anomalies.append(anomaly)
+                compound_alert = self._convert_compound_to_anomaly(compound_risk)
+                compound_risk_alerts.append(compound_alert)
 
-        total_detected = len(all_anomalies)
+        total_detected = len(all_anomalies)  # Compound risks not included in anomaly count
         logger.info(f"Total anomalies to rank: {total_detected}")
 
         # STEP 2: Score each anomaly
@@ -150,81 +151,58 @@ class AlertRanker:
                 f"Severity: {anomaly.get('severity', 'unknown')}"
             )
 
-        # STEP 4: Categorize by confidence tier
-        high_confidence = []
-        moderate_confidence = []
-        low_confidence = []
-
-        for anomaly in scored_anomalies:
-            # Get confidence tier from calibration
-            tier = anomaly.get('confidence_calibration', {}).get('confidence_tier', 'LOW')
-
-            if tier == 'HIGH':
-                high_confidence.append(anomaly)
-            elif tier == 'MODERATE':
-                moderate_confidence.append(anomaly)
-            else:
-                low_confidence.append(anomaly)
-
-        logger.info(
-            f"Categorized by confidence: "
-            f"HIGH={len(high_confidence)}, "
-            f"MODERATE={len(moderate_confidence)}, "
-            f"LOW={len(low_confidence)}"
-        )
-
-        # STEP 5: Enforce alert budget
+        # STEP 4: Categorize by anomaly severity (not confidence tier)
         high_severity = []
         medium_severity = []
         low_severity = []
         suppressed = []
 
-        # Check if user wants to see all alerts
-        if self.user_preferences.get('show_all', False):
-            logger.info("User preference 'show_all' enabled, bypassing alert budget")
-            high_severity = high_confidence
-            medium_severity = moderate_confidence
-            low_severity = low_confidence
-        else:
-            # Apply budget constraints
-            # Keep best TARGET_ALERTS from HIGH tier
-            if len(high_confidence) <= self.TARGET_ALERTS:
-                high_severity = high_confidence
+        for anomaly in scored_anomalies:
+            sev = anomaly.get('severity', 'medium').lower()
+            if sev in ('critical', 'high'):
+                high_severity.append(anomaly)
+            elif sev == 'medium':
+                medium_severity.append(anomaly)
+            else:
+                low_severity.append(anomaly)
+
+        logger.info(
+            f"Categorized by severity: "
+            f"HIGH={len(high_severity)}, "
+            f"MEDIUM={len(medium_severity)}, "
+            f"LOW={len(low_severity)}"
+        )
+
+        # STEP 5: Enforce alert budget (trim within each severity bucket)
+        if not self.user_preferences.get('show_all', False):
+            total = len(high_severity) + len(medium_severity) + len(low_severity)
+            if total > self.MAX_ALERTS:
+                # Keep all high, trim medium/low if over budget
                 remaining_budget = self.MAX_ALERTS - len(high_severity)
-            else:
-                # Take top TARGET_ALERTS, move rest to moderate
-                high_severity = high_confidence[:self.TARGET_ALERTS]
-                moderate_confidence = high_confidence[self.TARGET_ALERTS:] + moderate_confidence
-                remaining_budget = self.MAX_ALERTS - self.TARGET_ALERTS
+                if remaining_budget <= 0:
+                    # Too many high alerts — trim high, drop medium/low
+                    suppressed = high_severity[self.MAX_ALERTS:] + medium_severity + low_severity
+                    high_severity = high_severity[:self.MAX_ALERTS]
+                    medium_severity = []
+                    low_severity = []
+                else:
+                    if len(medium_severity) <= remaining_budget:
+                        remaining_budget -= len(medium_severity)
+                    else:
+                        suppressed = medium_severity[remaining_budget:]
+                        medium_severity = medium_severity[:remaining_budget]
+                        remaining_budget = 0
+
+                    if remaining_budget > 0 and len(low_severity) > remaining_budget:
+                        suppressed += low_severity[remaining_budget:]
+                        low_severity = low_severity[:remaining_budget]
 
             logger.info(
-                f"Alert budget: {len(high_severity)} HIGH alerts selected, "
-                f"remaining budget: {remaining_budget}"
+                f"Alert budget: {len(high_severity)} HIGH, {len(medium_severity)} MEDIUM, "
+                f"{len(low_severity)} LOW, {len(suppressed)} suppressed"
             )
-
-            # Fill remaining budget with moderate confidence
-            if remaining_budget > 0 and moderate_confidence:
-                medium_severity = moderate_confidence[:remaining_budget]
-                remaining = moderate_confidence[remaining_budget:]
-                low_confidence = remaining + low_confidence
-                remaining_budget -= len(medium_severity)
-
-            logger.info(
-                f"Alert budget: {len(medium_severity)} MODERATE alerts selected, "
-                f"remaining budget: {remaining_budget}"
-            )
-
-            # Fill any remaining budget with low confidence
-            if remaining_budget > 0 and low_confidence:
-                low_severity = low_confidence[:remaining_budget]
-                suppressed = low_confidence[remaining_budget:]
-            else:
-                suppressed = low_confidence
-
-            logger.info(
-                f"Alert budget: {len(low_severity)} LOW alerts selected, "
-                f"{len(suppressed)} suppressed"
-            )
+        else:
+            logger.info("User preference 'show_all' enabled, bypassing alert budget")
 
         total_shown = len(high_severity) + len(medium_severity) + len(low_severity)
 
@@ -246,7 +224,8 @@ class AlertRanker:
 
         logger.info(
             f"Stage 6 complete: {total_shown}/{total_detected} alerts shown "
-            f"({ranking_metadata['suppression_rate']:.1%} suppressed)"
+            f"({ranking_metadata['suppression_rate']:.1%} suppressed), "
+            f"{len(compound_risk_alerts)} compound risk alerts"
         )
 
         return {
@@ -254,6 +233,7 @@ class AlertRanker:
             'medium_severity': medium_severity,
             'low_severity': low_severity,
             'suppressed': suppressed,
+            'compound_risk_alerts': compound_risk_alerts,  # Kept separate from anomaly count
             'total_detected': total_detected,
             'total_shown': total_shown,
             'ranking_metadata': ranking_metadata
@@ -494,18 +474,12 @@ class AlertRanker:
             for cat, count in sorted_categories[:top_n]
         ]
 
-    def adjust_budget(self, max_alerts: int, target_alerts: int) -> None:
+    def adjust_budget(self, max_alerts: int) -> None:
         """
         Adjust alert budget dynamically.
 
         Args:
             max_alerts: New maximum total alerts
-            target_alerts: New target high-priority alerts
         """
-        logger.info(
-            f"Adjusting alert budget: "
-            f"MAX_ALERTS {self.MAX_ALERTS} → {max_alerts}, "
-            f"TARGET_ALERTS {self.TARGET_ALERTS} → {target_alerts}"
-        )
+        logger.info(f"Adjusting alert budget: MAX_ALERTS {self.MAX_ALERTS} → {max_alerts}")
         self.MAX_ALERTS = max_alerts
-        self.TARGET_ALERTS = target_alerts

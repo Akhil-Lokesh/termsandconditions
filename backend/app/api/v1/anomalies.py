@@ -221,7 +221,11 @@ async def reanalyze_document(
     await pinecone_service.initialize()
 
     # Run anomaly detection
-    detector = AnomalyDetector(embedding_service, pinecone_service, db)
+    detector = AnomalyDetector(
+        embedding_service=embedding_service,
+        pinecone_service=pinecone_service,
+        db=db
+    )
 
     company_name = "Unknown"
     if document.document_metadata:
@@ -274,12 +278,13 @@ async def reanalyze_document(
         saved_anomalies.append(anomaly)
 
     # Update document stats
+    critical_count = len([a for a in saved_anomalies if a.severity == "critical"])
     high_count = len([a for a in saved_anomalies if a.severity == "high"])
     medium_count = len([a for a in saved_anomalies if a.severity == "medium"])
 
     document.anomaly_count = len(saved_anomalies)
     document.risk_score = detection_result.get("overall_risk_score", 5)
-    document.risk_level = "High" if high_count > 0 else "Medium" if medium_count > 2 else "Low"
+    document.risk_level = "Critical" if critical_count > 0 else "High" if high_count > 0 else "Medium" if medium_count > 2 else "Low"
     document.processing_status = "completed"
 
     db.commit()
@@ -287,7 +292,7 @@ async def reanalyze_document(
     logger.info(f"Re-analysis complete: {len(saved_anomalies)} anomalies saved")
 
     # Build response
-    severity_counts = {"high": high_count, "medium": medium_count, "low": len(saved_anomalies) - high_count - medium_count}
+    low_count = len(saved_anomalies) - critical_count - high_count - medium_count
 
     return AnomalyListResponse(
         anomalies=[
@@ -299,6 +304,8 @@ async def reanalyze_document(
                 clause_number=a.clause_number,
                 severity=a.severity,
                 explanation=a.explanation,
+                consumer_impact=a.consumer_impact,
+                recommendation=a.recommendation,
                 prevalence=a.prevalence,
                 risk_flags=a.risk_flags or [ind.get('name', ind.get('indicator', str(ind))) for ind in (a.detected_indicators or [])],
                 created_at=a.created_at,
@@ -306,9 +313,10 @@ async def reanalyze_document(
             for a in saved_anomalies
         ],
         total=len(saved_anomalies),
-        high_risk_count=severity_counts.get("high", 0),
-        medium_risk_count=severity_counts.get("medium", 0),
-        low_risk_count=severity_counts.get("low", 0),
+        critical_risk_count=critical_count,
+        high_risk_count=high_count,
+        medium_risk_count=medium_count,
+        low_risk_count=low_count,
     )
 
 
@@ -385,8 +393,9 @@ async def get_anomalies(
 
     anomalies = (
         query.order_by(
-            # Sort by severity: high > medium > low
+            # Sort by severity: critical > high > medium > low
             case(
+                (Anomaly.severity == "critical", 0),
                 (Anomaly.severity == "high", 1),
                 (Anomaly.severity == "medium", 2),
                 (Anomaly.severity == "low", 3),
@@ -426,6 +435,8 @@ async def get_anomalies(
                 clause_number=a.clause_number,
                 severity=a.severity,
                 explanation=a.explanation,
+                consumer_impact=a.consumer_impact,
+                recommendation=a.recommendation,
                 prevalence=a.prevalence,
                 # Use detected_indicators if risk_flags is empty (migration compatibility)
                 risk_flags=a.risk_flags or [ind.get('name', ind.get('indicator', str(ind))) for ind in (a.detected_indicators or [])],
@@ -434,6 +445,7 @@ async def get_anomalies(
             for a in anomalies
         ],
         total=total,
+        critical_risk_count=severity_counts.get("critical", 0),
         high_risk_count=severity_counts.get("high", 0),
         medium_risk_count=severity_counts.get("medium", 0),
         low_risk_count=severity_counts.get("low", 0),
@@ -490,6 +502,8 @@ async def get_anomaly_detail(
         clause_number=anomaly.clause_number,
         severity=anomaly.severity,
         explanation=anomaly.explanation,
+        consumer_impact=anomaly.consumer_impact,
+        recommendation=anomaly.recommendation,
         prevalence=anomaly.prevalence,
         # Use detected_indicators if risk_flags is empty (migration compatibility)
         risk_flags=anomaly.risk_flags or [ind.get('name', ind.get('indicator', str(ind))) for ind in (anomaly.detected_indicators or [])],
@@ -625,11 +639,11 @@ async def get_anomaly_report(
         }
 
         # Convert clauses to sections format expected by detector
+        # The detector expects sections with a 'clauses' array inside each section
         sections = [
             {
-                'section': f"Section {c['clause_number']}",
-                'text': c['text'],
-                'clause_number': c['clause_number']
+                'title': f"Section {c['clause_number']}",
+                'clauses': [{'text': c['text'], 'clause_number': c['clause_number'], 'id': c['clause_number']}]
             }
             for c in clauses
         ]
@@ -662,14 +676,41 @@ async def get_anomaly_report(
                 f"risk score: {min(risk_score, 10):.1f}/10"
             )
 
+            from datetime import datetime
             return {
+                "document_id": document_id,
+                "company_name": company_name,
+                "analysis_date": datetime.utcnow().isoformat(),
                 "high_severity_alerts": high_alerts,
                 "medium_severity_alerts": medium_alerts,
                 "low_severity_alerts": low_alerts,
                 "overall_risk_score": min(risk_score, 10),
                 "total_anomalies_detected": len(report),
                 "total_alerts_shown": total_shown,
-                "compound_risks": []
+                "suppressed_alerts_count": 0,
+                "compound_risks": [],
+                "ranking_metadata": {
+                    "total_detected": len(report),
+                    "total_shown": total_shown,
+                    "total_suppressed": 0,
+                    "suppression_rate": 0.0,
+                    "avg_score": 0.0,
+                    "top_score": 0.0,
+                    "top_categories": [],
+                    "alert_budget_applied": False,
+                    "user_preferences_applied": False
+                },
+                "pipeline_performance": {
+                    "stage1_detections": len(report),
+                    "stage2_filtered": len(report),
+                    "stage3_clustered": len(report),
+                    "stage4_compounds": 0,
+                    "stage5_calibrated": len(report),
+                    "stage6_ranked": len(report),
+                    "total_clauses_analyzed": 0,
+                    "total_processing_time_ms": 0.0
+                },
+                "competitive_benchmark": None
             }
         else:
             logger.info(

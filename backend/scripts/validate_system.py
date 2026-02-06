@@ -5,7 +5,7 @@ Complete System Validation Script
 This script performs comprehensive validation of the T&C Analysis System:
 1. Environment configuration
 2. Database connectivity
-3. External service integration (OpenAI, Pinecone, Redis)
+3. External service integration (Claude, Pinecone, Redis)
 4. Core module functionality
 5. API endpoint availability
 6. Data collection scripts
@@ -91,7 +91,7 @@ class SystemValidator:
 
             # Check required settings
             required = [
-                ("OPENAI_API_KEY", settings.OPENAI_API_KEY),
+                ("ANTHROPIC_API_KEY", settings.ANTHROPIC_API_KEY),
                 ("PINECONE_API_KEY", settings.PINECONE_API_KEY),
                 ("DATABASE_URL", settings.DATABASE_URL),
                 ("SECRET_KEY", settings.SECRET_KEY),
@@ -187,41 +187,41 @@ class SystemValidator:
         return all(status for _, status in checks)
 
     async def validate_services(self) -> Dict[str, bool]:
-        """Validate external services (OpenAI, Pinecone, Redis)."""
+        """Validate external services (Claude, Pinecone, Redis)."""
         logger.info("\n" + "=" * 60)
         logger.info("3. EXTERNAL SERVICES")
         logger.info("=" * 60)
 
         service_status = {}
 
-        # OpenAI
+        # Claude
         try:
-            from app.services.openai_service import OpenAIService
+            from app.services.claude_service import ClaudeService
             from app.core.config import settings
 
-            logger.info("\n📡 Testing OpenAI...")
-            openai_service = OpenAIService()
+            logger.info("\n📡 Testing Claude...")
+            claude_service = ClaudeService()
 
-            # Test embedding generation
+            # Test completion generation
             try:
-                embedding = await openai_service.create_embedding("test")
-                if len(embedding) == 1536:
-                    logger.info("✓ OpenAI API working (embedding generated)")
-                    logger.info(f"   Embedding dimension: {len(embedding)}")
-                    service_status["openai"] = True
+                response = await claude_service.create_completion("Say 'test' and nothing else.", max_tokens=10)
+                if response:
+                    logger.info("✓ Claude API working (completion generated)")
+                    logger.info(f"   Response: {response[:50]}")
+                    service_status["claude"] = True
                 else:
-                    logger.error(f"✗ OpenAI embedding wrong dimension: {len(embedding)}")
-                    service_status["openai"] = False
+                    logger.error("✗ Claude returned empty response")
+                    service_status["claude"] = False
             except Exception as e:
-                logger.error(f"✗ OpenAI API call failed: {e}")
+                logger.error(f"✗ Claude API call failed: {e}")
                 logger.warning("   Check API key and quota")
-                service_status["openai"] = False
+                service_status["claude"] = False
 
-            await openai_service.close()
+            await claude_service.close()
 
         except Exception as e:
-            logger.error(f"✗ OpenAI service initialization failed: {e}")
-            service_status["openai"] = False
+            logger.error(f"✗ Claude service initialization failed: {e}")
+            service_status["claude"] = False
 
         # Pinecone
         try:

@@ -19,7 +19,8 @@ from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 
 from app.services.pinecone_service import PineconeService
-from app.services.openai_service import OpenAIService
+from app.services.claude_service import ClaudeService
+from app.services.embedding_service import EmbeddingService
 from app.core.prevalence_calculator import PrevalenceCalculator
 from app.core.risk_assessor import RiskAssessor
 from app.core.risk_indicators import RiskIndicators
@@ -34,9 +35,156 @@ from app.core.anomaly_clusterer import AnomalyClusterer  # Stage 3: Clustering &
 from app.core.confidence_calibrator import ConfidenceCalibrator  # Stage 5: Confidence Calibration
 from app.core.active_learning_manager import ActiveLearningManager  # Stage 5: Active Learning
 from app.core.alert_ranker import AlertRanker  # Stage 6: Alert Ranking & Budget
+from app.core.context_aware_layer import ContextAwareLayer  # NEW: Context-Aware Layer
+from app.core.competitive_analyzer import CompetitiveAnalyzer  # NEW: Competitive Benchmarking
+from app.core.inverted_funnel import InvertedFunnelDetector, DetectedAnomaly  # NEW: Inverted Funnel System
+from app.core.rag_anomaly_detector import RAGAnomalyDetector  # NEW: RAG-based detection
+from app.core.constants import (
+    ThreatLevel,
+    CommonnessLevel,
+    DisplayCategory,
+    PATTERN_THREAT_LEVELS,
+    CommonnessThresholds,
+    get_display_category,
+    get_threat_level_from_score,
+)
 from app.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
+
+# Estimated prevalence by risk category (based on analysis of 100+ T&C documents)
+# These are fallback values when Pinecone baseline is unavailable
+#
+# PREVALENCE TIERS:
+# - >= 0.70: SUPPRESS (very common, standard language - hide by default)
+# - 0.50-0.69: REDUCE (common, reduce severity)
+# - 0.30-0.49: FLAG (notable, show with context)
+# - < 0.30: ALWAYS FLAG (unusual/rare - red flags)
+#
+CATEGORY_PREVALENCE_ESTIMATES = {
+    # ============================================================
+    # SUPPRESS BY DEFAULT (>= 85%) - Only very common boilerplate
+    # These are truly universal clauses - can be hidden
+    # NOTE: Threshold raised to 85% to reduce over-suppression
+    # ============================================================
+    'survival_clauses': 0.70,        # Common but risky - reduced from 0.95
+    'asymmetric_assignment': 0.70,   # Common but risky - reduced from 0.95
+    'governing_law': 0.95,           # Universal - SUPPRESS
+    'severability': 0.92,            # Almost universal - SUPPRESS
+    'entire_agreement': 0.92,        # Almost universal - SUPPRESS
+    'data_throttling': 0.90,         # All telecom "unlimited" plans - SUPPRESS
+    'p2p_scam_liability': 0.90,      # All P2P payment apps - SUPPRESS
+    'crypto_bankruptcy_risk': 0.90,  # All crypto platforms - SUPPRESS
+
+    # ============================================================
+    # COMMON BUT SHOW (70-84%) - Common, may still be notable
+    # These are common but can have problematic variations - SHOW
+    # NOTE: Reduced from 80-90% to ensure risky variants are caught
+    # ============================================================
+    'liability': 0.75,               # Common but can be egregious (was 0.90)
+    'warranty': 0.75,                # Standard but worth noting (was 0.85)
+    'liability_limitation': 0.75,    # Depends on severity (was 0.85)
+    'indemnification': 0.70,         # Common but notable (was 0.80)
+    'digital_ownership_illusion': 0.80,  # Universal in digital content
+    'broad_liability_disclaimer': 0.70,  # Standard but notable (was 0.80)
+    'fdic_passthrough': 0.80,        # Most fintech apps
+
+    # ============================================================
+    # NOTEWORTHY (50-69%) - Common practices, always show
+    # Show these with appropriate severity - never suppress
+    # ============================================================
+    'content': 0.55,                 # Content licensing is notable (was 0.75)
+    'broad_content_license': 0.55,   # Sublicensable is notable (was 0.75)
+    'modification': 0.65,            # Terms changes are notable (was 0.70)
+    'termination': 0.60,             # Standard termination rights
+    'privacy': 0.55,                 # Privacy policies are standard
+    'data': 0.55,                    # Data usage clauses
+    'unilateral_changes': 0.55,      # Most T&Cs have change clauses
+    'payment': 0.50,                 # Payment terms
+    'other': 0.50,                   # Default for unknown categories
+    'indefinite_data_retention': 0.50,  # Legal retention common
+    'slow_content_deletion': 0.50,   # Backup deletion delays common
+    'auto_renewal': 0.60,            # Notable (was 0.82)
+    'arbitration': 0.50,             # Notable (was 0.65)
+    'class_action_waiver': 0.50,     # Notable - reduced (was 0.60)
+    'asymmetric_jurisdiction': 0.55, # Forum selection clauses
+    'price_changes': 0.55,           # Price increase rights (was 0.60)
+    'voice_video_retention': 0.50,   # IoT/smart devices
+    'hipaa_coverage_gap': 0.45,      # Health/wellness apps only
+
+    # ============================================================
+    # UNCOMMON (15-40%) - Less common, flag prominently
+    # These are notable and should be highlighted
+    # ============================================================
+    'family_liability': 0.18,                # Rare - family member payment responsibility
+    'unlimited_financial_exposure': 0.22,    # Rare - unlimited liability for others
+    'music_library_lock_in': 0.25,           # Lose uploads on cancel
+    'content_loss_on_cancellation': 0.28,    # Lose access to own content
+
+    # ============================================================
+    # ALWAYS FLAG (< 30%) - Rare/unusual - RED FLAGS
+    # These are critical patterns that should ALWAYS be shown
+    # ============================================================
+    'data_selling': 0.10,            # Explicit data selling - CRITICAL
+    'biometric': 0.08,               # Biometric data collection - CRITICAL
+    'biometric_data_collection': 0.08,  # Biometric collection - CRITICAL
+    'rights_waiver': 0.05,           # Waive all legal rights - CRITICAL
+    'warrantless_law_enforcement': 0.08,  # Rare - CRITICAL
+    'worker_misclassification': 0.10,    # Gig economy RED FLAG
+    'perpetual_license': 0.15,       # Perpetual irrevocable content license
+    'perpetual_irrevocable_license': 0.15,  # Forever license
+    'statute_limitation': 0.15,      # Shortened statute of limitations
+    'shortened_statute_limitations': 0.15,  # Shortened legal timeframes
+    'location_always': 0.15,         # Always-on location tracking
+    'fund_holds_freezing': 0.20,     # Fund freezing (except fintech)
+    'no_refund_absolute': 0.25,      # Absolute no refund policy
+    'explicit_account_termination': 0.25,  # Explicit permanent ban language
+    'unilateral_content_removal': 0.28,    # Content removal power
+}
+
+# Industry-specific prevalence modifiers
+# Some patterns are normal in one industry but red flags in another
+INDUSTRY_PREVALENCE_MODIFIERS = {
+    'social_media': {
+        'perpetual_irrevocable_license': 0.60,  # Reduced from 0.95 - still show even if common
+        'forced_arbitration_class_waiver': 0.42,
+        'data_sharing': 0.70,  # Reduced from 0.90
+        'broad_content_license': 0.60,  # Reduced from 0.95 - still show even if common
+    },
+    'financial': {
+        'forced_arbitration_class_waiver': 0.98,  # Near universal in banking
+        'fund_holds_freezing': 0.90,              # Normal for payment processors
+        'fdic_passthrough': 0.95,                 # Common for fintech
+        'explicit_account_termination': 0.80,
+    },
+    'gig_economy': {
+        'worker_misclassification': 1.0,  # 100% of gig apps
+        'forced_arbitration_class_waiver': 1.0,
+        'unlimited_liability': 0.90,
+    },
+    'iot_smart_home': {
+        'voice_video_retention': 0.95,
+        'data_sharing': 0.90,
+        'warrantless_law_enforcement': 0.30,  # Ring, Amazon devices
+    },
+    'telecom': {
+        'data_throttling': 0.99,
+        'forced_arbitration_class_waiver': 0.95,
+    },
+    'crypto': {
+        'crypto_bankruptcy_risk': 0.99,
+        'forced_arbitration_class_waiver': 0.85,
+        'fund_holds_freezing': 0.80,
+    },
+    'health_wellness': {
+        'hipaa_coverage_gap': 0.70,  # Most fitness apps
+        'data_sharing': 0.75,
+    },
+    'gaming_digital': {
+        'digital_ownership_illusion': 0.99,
+        'unilateral_termination': 0.90,
+    }
+}
 
 
 class AnomalyDetector:
@@ -44,9 +192,10 @@ class AnomalyDetector:
 
     def __init__(
         self,
-        openai_service: Optional[OpenAIService] = None,
+        embedding_service: Optional[EmbeddingService] = None,
         pinecone_service: Optional[PineconeService] = None,
         db: Optional[Session] = None,
+        claude_service: Optional[ClaudeService] = None,
         enable_statistical_detection: bool = True,
         enable_semantic_detection: bool = True,
     ):
@@ -54,21 +203,23 @@ class AnomalyDetector:
         Initialize anomaly detector with multi-stage detection pipeline.
 
         Args:
-            openai_service: Optional OpenAI service instance
+            embedding_service: Optional Embedding service instance for semantic detection
             pinecone_service: Optional Pinecone service instance
             db: Optional database session
+            claude_service: Optional Claude service instance
             enable_statistical_detection: Enable Stage 1 statistical detection
             enable_semantic_detection: Enable Stage 1 semantic detection
         """
-        self.openai = openai_service or OpenAIService()
+        self.embedding = embedding_service or EmbeddingService()
+        self.claude = claude_service or ClaudeService()
         self.pinecone = pinecone_service or PineconeService()
         self.db = db
 
         # Legacy detectors (maintained for backward compatibility)
-        self.prevalence_calc = PrevalenceCalculator(self.openai, self.pinecone, self.db)
-        self.risk_assessor = RiskAssessor(self.openai, use_gpt5=True, db=self.db)
+        self.prevalence_calc = PrevalenceCalculator(self.embedding, self.pinecone, self.db)  # FIXED: Use embedding, not claude
+        self.risk_assessor = RiskAssessor(llm_service=self.claude, use_gpt5=False, db=self.db)
         self.risk_indicators = RiskIndicators()
-        self.semantic_detector = SemanticRiskDetector(self.openai)  # Legacy
+        self.semantic_detector = SemanticRiskDetector(self.embedding)  # FIXED: Use EmbeddingService
         self.compound_detector = CompoundRiskDetector()
         self._semantic_initialized = False
 
@@ -113,7 +264,7 @@ class AnomalyDetector:
 
         # NEW: Stage 2 Context Filters
         try:
-            self.industry_filter = IndustryBaselineFilter(pinecone_index=self.pinecone.index)
+            self.industry_filter = IndustryBaselineFilter(pinecone_service=self.pinecone)
             logger.info("Industry baseline filter initialized")
         except Exception as e:
             logger.warning(f"Failed to initialize industry filter: {e}")
@@ -162,6 +313,41 @@ class AnomalyDetector:
         except Exception as e:
             logger.warning(f"Failed to initialize alert ranker: {e}")
             self.alert_ranker = None
+
+        # NEW: Context-Aware Layer (reduces false positives)
+        try:
+            self.context_aware_layer = ContextAwareLayer()
+            logger.info("Context-aware layer initialized")
+        except Exception as e:
+            logger.warning(f"Failed to initialize context-aware layer: {e}")
+            self.context_aware_layer = None
+
+        # NEW: Inverted Funnel Detector (4-layer system for better UX)
+        try:
+            self.inverted_funnel = InvertedFunnelDetector(
+                risk_indicators=self.risk_indicators,
+                semantic_detector=self.semantic_anomaly_detector,
+                statistical_detector=self.statistical_detector,
+                prevalence_calculator=self.prevalence_calc,
+            )
+            logger.info("Inverted funnel detector initialized")
+        except Exception as e:
+            logger.warning(f"Failed to initialize inverted funnel detector: {e}")
+            self.inverted_funnel = None
+
+        # NEW: RAG-based Anomaly Detector (true retrieval-augmented detection)
+        # Uses baseline corpus comparison for accurate prevalence calculation
+        try:
+            self.rag_detector = RAGAnomalyDetector(
+                embedding_service=self.embedding,
+                pinecone_service=self.pinecone,
+                baseline_namespace="baseline",
+                similarity_threshold=0.75,
+            )
+            logger.info("RAG anomaly detector initialized")
+        except Exception as e:
+            logger.warning(f"Failed to initialize RAG detector: {e}")
+            self.rag_detector = None
 
     async def _run_multi_stage_detection(
         self,
@@ -342,12 +528,16 @@ class AnomalyDetector:
     async def run_stage2(
         self,
         stage1_results: List[Dict[str, Any]],
-        document_context: Dict[str, Any]
+        document_context: Dict[str, Any],
+        document_text: str = ""
     ) -> List[Dict[str, Any]]:
         """
         Run Stage 2 context filtering on Stage 1 anomalies.
 
-        Applies industry-specific baselines, service type context,
+        NEW: Starts with Context-Aware Layer to reduce false positives by
+        understanding document context (industry, user profile, power dynamics).
+
+        Then applies industry-specific baselines, service type context,
         and temporal adjustments to refine anomaly detection.
 
         Args:
@@ -358,11 +548,65 @@ class AnomalyDetector:
                 - effective_date: When T&C became effective
                 - last_modified: When T&C were last modified
                 - is_change: Whether this is a change from previous version
+            document_text: Full document text for context detection
 
         Returns:
             List of anomalies with Stage 2 metadata and filtering applied
         """
         logger.info(f"Starting Stage 2 filtering on {len(stage1_results)} anomalies")
+
+        # =====================================================================
+        # NEW: Context-Aware Layer (reduces false positives)
+        # Auto-detects industry, user profile, power dynamics from document text
+        # Suppresses expected patterns, amplifies red flags
+        # =====================================================================
+        if self.context_aware_layer and document_text:
+            try:
+                context_result = self.context_aware_layer.analyze_with_context(
+                    anomalies=stage1_results,
+                    document_text=document_text,
+                    metadata=document_context.get('metadata', {})
+                )
+
+                # Update document context with detected industry
+                document_context['detected_industry'] = context_result.context.industry
+                document_context['industry_confidence'] = context_result.context.industry_confidence
+                document_context['user_profile'] = context_result.context.user_profile
+                document_context['power_dynamics'] = context_result.context.power_dynamics
+                document_context['data_sensitivity'] = context_result.context.data_sensitivity
+
+                # Use auto-detected industry if not manually specified
+                if document_context.get('industry') in [None, 'general', 'saas']:
+                    if context_result.context.industry_confidence > 0.3:
+                        document_context['industry'] = context_result.context.industry
+
+                # Use adjusted anomalies (suppressed patterns removed, severities adjusted)
+                stage1_results = context_result.adjusted_anomalies
+
+                logger.info(
+                    f"Context-Aware Layer: industry={context_result.context.industry} "
+                    f"(confidence={context_result.context.industry_confidence:.2f}), "
+                    f"suppressed={context_result.suppressed_count}, "
+                    f"reduced={context_result.reduced_count}, "
+                    f"amplified={context_result.amplified_count}"
+                )
+
+                # Log suppressed patterns for debugging
+                if context_result.suppressed_anomalies:
+                    suppressed_patterns = [
+                        a.get('risk_category', 'unknown')
+                        for a in context_result.suppressed_anomalies[:5]
+                    ]
+                    logger.info(f"  Suppressed patterns: {suppressed_patterns}")
+
+            except Exception as e:
+                logger.warning(f"Context-aware analysis failed: {e}")
+                # Continue with original anomalies if context-aware fails
+        else:
+            if not self.context_aware_layer:
+                logger.debug("Context-aware layer not available")
+            if not document_text:
+                logger.debug("No document text provided for context detection")
         stage2_start = time.time()
 
         # Extract document context with defaults
@@ -401,30 +645,39 @@ class AnomalyDetector:
                 prevalence_result = None
                 industry_adjustment = None
 
+                # Get estimated prevalence based on category (fallback when baseline unavailable)
+                estimated_prevalence = CATEGORY_PREVALENCE_ESTIMATES.get(category, 0.50)
+
                 if self.industry_filter:
                     try:
                         # Get clause embedding (reuse from stage1 or generate)
                         clause_embedding = None
-                        if self.openai:
+                        if self.embedding:
                             try:
-                                clause_embedding = await self.openai.get_embeddings(clause_text)
+                                # Use the detector's embedding service
+                                clause_embedding = await self.embedding.create_embedding(clause_text)
                             except Exception as e:
                                 logger.warning(f"Failed to get embedding for {clause_number}: {e}")
 
                         if clause_embedding:
-                            # Calculate prevalence
+                            # Calculate prevalence from baseline
                             prevalence_result = await self.industry_filter.calculate_prevalence(
                                 clause_embedding=clause_embedding,
                                 industry=industry,
                                 category=category
                             )
 
+                            # If baseline returned 0 (empty), use category estimate
+                            if prevalence_result.get('prevalence', 0.0) == 0.0:
+                                prevalence_result['prevalence'] = estimated_prevalence
+                                prevalence_result['source'] = 'category_estimate'
+
                             # Apply industry modifier
                             industry_adjustment = self.industry_filter.apply_industry_modifier(
                                 base_risk_score=base_risk_score,
                                 industry=industry,
                                 category=category,
-                                prevalence=prevalence_result.get('prevalence', 0.0),
+                                prevalence=prevalence_result.get('prevalence', estimated_prevalence),
                                 clause_text=clause_text
                             )
 
@@ -433,25 +686,34 @@ class AnomalyDetector:
                                 f"industry_modifier={industry_adjustment.get('industry_modifier', 1.0):.2f}"
                             )
                         else:
-                            logger.warning(f"No embedding available for clause {clause_number}, skipping industry filter")
+                            # No embedding - use category estimate
+                            logger.warning(f"No embedding for clause {clause_number}, using category estimate")
+                            prevalence_result = {'prevalence': estimated_prevalence, 'source': 'category_estimate'}
+                            industry_adjustment = self.industry_filter.apply_industry_modifier(
+                                base_risk_score=base_risk_score,
+                                industry=industry,
+                                category=category,
+                                prevalence=estimated_prevalence,
+                                clause_text=clause_text
+                            )
 
                     except Exception as e:
                         logger.error(f"Industry filtering failed for clause {clause_number}: {e}")
-                        prevalence_result = {'prevalence': 0.0, 'error': str(e)}
+                        prevalence_result = {'prevalence': estimated_prevalence, 'source': 'category_estimate', 'error': str(e)}
                         industry_adjustment = {
                             'base_score': base_risk_score,
                             'industry_modifier': 1.0,
                             'adjusted_score': base_risk_score,
-                            'reasoning': f'Error: {str(e)}'
+                            'reasoning': f'Using category estimate due to error'
                         }
                 else:
-                    # No industry filter available
-                    prevalence_result = {'prevalence': 0.0, 'note': 'Industry filter not available'}
+                    # No industry filter - use category estimate
+                    prevalence_result = {'prevalence': estimated_prevalence, 'source': 'category_estimate'}
                     industry_adjustment = {
                         'base_score': base_risk_score,
                         'industry_modifier': 1.0,
                         'adjusted_score': base_risk_score,
-                        'reasoning': 'Industry filter not initialized'
+                        'reasoning': 'Using category-based prevalence estimate'
                     }
 
                 # Use industry-adjusted score for further processing
@@ -556,12 +818,36 @@ class AnomalyDetector:
                 final_score = current_risk_score
                 calibrated_confidence = stage2_confidence
 
-                # Proceed to Stage 3 if:
+                # Get prevalence value for filtering
+                prevalence_value = prevalence_result.get('prevalence', 0.5) if isinstance(prevalence_result, dict) else 0.5
+
+                # Import critical patterns to bypass prevalence filter
+                from app.core.constants import CriticalPatterns, PrevalenceThresholds
+
+                # Normalize category for comparison
+                category_normalized = (category or '').lower().replace('-', '_').replace(' ', '_')
+
+                # Check if this is a critical pattern that should never be suppressed
+                is_critical_pattern = category_normalized in CriticalPatterns.ALWAYS_CRITICAL
+
+                # Proceed to Stage 3 with stricter filtering:
                 # 1. Service type filter says keep AND
-                # 2. (Adjusted score >= 5.0 OR calibrated confidence >= 0.60)
+                # 2. (Adjusted score >= 4.0 OR calibrated confidence >= 0.50) AND
+                # 3. Prevalence < 85% (suppress only very common clauses) OR is critical pattern OR is high severity
+                #
+                # SEVERITY OVERRIDE: Never suppress high/critical severity anomalies by prevalence alone
+                # Just because something is common doesn't mean it's not harmful
+                severity = anomaly.get('severity', 'medium')
+                is_high_severity = severity in ['critical', 'high']
+
                 proceed_to_stage3 = (
                     keep_anomaly and
-                    (final_score >= 5.0 or calibrated_confidence >= 0.60)
+                    (final_score >= 4.0 or calibrated_confidence >= 0.50) and  # Raised thresholds
+                    (
+                        prevalence_value < PrevalenceThresholds.SUPPRESS_ABOVE or
+                        is_critical_pattern or
+                        is_high_severity  # NEW: Never suppress high/critical severity
+                    )
                 )
 
                 # Log filtering decision
@@ -569,6 +855,12 @@ class AnomalyDetector:
                     logger.info(
                         f"Clause {clause_number} filtered out by service type context: "
                         f"{service_type_result.get('reason', 'Unknown reason')}"
+                    )
+                    filtered_out_count += 1
+                elif prevalence_value >= PrevalenceThresholds.SUPPRESS_ABOVE and not is_critical_pattern and not is_high_severity:
+                    logger.info(
+                        f"Clause {clause_number} filtered out - common clause: "
+                        f"prevalence={prevalence_value:.0%} (>= 85% threshold)"
                     )
                     filtered_out_count += 1
                 elif not proceed_to_stage3:
@@ -580,13 +872,13 @@ class AnomalyDetector:
                 else:
                     logger.debug(
                         f"Clause {clause_number} proceeding to Stage 3: "
-                        f"score={final_score:.2f}, confidence={calibrated_confidence:.2f}"
+                        f"score={final_score:.2f}, confidence={calibrated_confidence:.2f}, prevalence={prevalence_value:.0%}"
                     )
 
                 # STEP 6: Update anomaly with Stage 2 metadata
                 stage2_anomaly = {
                     **anomaly,  # Include all Stage 1 fields
-                    'prevalence': prevalence_result,
+                    'prevalence': prevalence_value,  # Use float, not dict
                     'industry_adjustment': industry_adjustment,
                     'service_type_filter': service_type_result,
                     'temporal_adjustment': temporal_adjustment,
@@ -795,11 +1087,51 @@ class AnomalyDetector:
         stage4_start = time.time()
 
         try:
-            # Detect compound risks
+            # Detect compound risks using existing detector
             compound_risks = self.compound_detector.detect_compound_risks(
                 anomalies=stage3_results,
                 full_clauses=full_clauses
             )
+
+            # NEW: Also detect pattern clusters using RiskIndicators
+            # Collect all detected pattern names from anomalies
+            all_detected_patterns = set()
+            for anomaly in stage3_results:
+                for indicator in anomaly.get("detected_indicators", []):
+                    all_detected_patterns.add(indicator["name"])
+
+            # Use new pattern cluster detection
+            if all_detected_patterns:
+                pattern_clusters = self.risk_indicators.detect_pattern_clusters(
+                    list(all_detected_patterns)
+                )
+
+                # Convert pattern clusters to compound risk format
+                for cluster in pattern_clusters:
+                    # Avoid duplicate entries by checking if similar pattern exists
+                    cluster_key = cluster['cluster']
+                    existing_names = {r.get('compound_risk_type', '') for r in compound_risks}
+
+                    if cluster_key not in existing_names:
+                        compound_risks.append({
+                            'compound_risk_type': cluster['cluster'],
+                            'name': cluster['cluster'].replace('_', ' ').title(),
+                            'description': cluster['description'],
+                            'compound_severity': cluster['severity'],
+                            'base_severity': 'high',
+                            'risk_multiplier': 1.5 if cluster['severity'] == 'critical' else 1.2,
+                            'confidence': cluster['coverage_ratio'],
+                            'combined_score': 8.0 if cluster['severity'] == 'critical' else 6.0,
+                            'required_components': cluster['patterns_possible'],
+                            'matched_required': cluster['patterns_found'],
+                            'matched_optional': [],
+                            'source': 'pattern_cluster'
+                        })
+
+                        logger.info(
+                            f"Pattern cluster detected: {cluster['cluster']} "
+                            f"({cluster['coverage']} patterns matched)"
+                        )
 
             if compound_risks:
                 logger.info(
@@ -1206,11 +1538,14 @@ class AnomalyDetector:
 
         # Check if ranker is available
         if not self.alert_ranker:
-            logger.warning("Alert ranker not available, returning all anomalies")
+            logger.warning("Alert ranker not available, distributing by severity field")
+            high = [a for a in stage5_anomalies if a.get('severity', '').lower() in ('high', 'critical')]
+            medium = [a for a in stage5_anomalies if a.get('severity', '').lower() == 'medium']
+            low = [a for a in stage5_anomalies if a.get('severity', '').lower() == 'low']
             return {
-                'high_severity': stage5_anomalies,
-                'medium_severity': [],
-                'low_severity': [],
+                'high_severity': high,
+                'medium_severity': medium,
+                'low_severity': low,
                 'suppressed': [],
                 'total_detected': len(stage5_anomalies),
                 'total_shown': len(stage5_anomalies),
@@ -1259,11 +1594,14 @@ class AnomalyDetector:
         except Exception as e:
             logger.error(f"Stage 6 ranking failed: {e}", exc_info=True)
 
-            # Graceful fallback: return all anomalies unranked
+            # Graceful fallback: distribute by severity field
+            high = [a for a in stage5_anomalies if a.get('severity', '').lower() in ('high', 'critical')]
+            medium = [a for a in stage5_anomalies if a.get('severity', '').lower() == 'medium']
+            low = [a for a in stage5_anomalies if a.get('severity', '').lower() == 'low']
             return {
-                'high_severity': stage5_anomalies,
-                'medium_severity': [],
-                'low_severity': [],
+                'high_severity': high,
+                'medium_severity': medium,
+                'low_severity': low,
                 'suppressed': [],
                 'total_detected': len(stage5_anomalies),
                 'total_shown': len(stage5_anomalies),
@@ -1346,7 +1684,7 @@ class AnomalyDetector:
         company_name: str = "Unknown",
         service_type: str = "general",
         document_context: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
+    ) -> Dict[str, Any]:
         """
         Detect all anomalies in a document.
 
@@ -1393,9 +1731,50 @@ class AnomalyDetector:
         all_anomalies = []
         total_clauses = 0
         full_clauses = []  # Collect all clauses for Stage 4
+        document_text_parts = []  # Collect full document text for context detection
+
+        # =====================================================================
+        # LLM BATCH DETECTION: Send ALL clauses to Claude in 1-2 API calls
+        # This catches risky clauses that keyword patterns miss entirely
+        # =====================================================================
+        llm_findings_map = {}
+        try:
+            from app.core.llm_clause_detector import LLMClauseDetector
+            llm_detector = LLMClauseDetector(self.claude)
+
+            # Collect all clauses for batch analysis
+            # Use section_name.clause_idx as unique ID to avoid duplicate clause_numbers
+            all_clause_list = []
+            for section in sections:
+                section_name = section.get("title", section.get("section_name", "Unknown Section"))
+                for clause_idx, clause in enumerate(section.get("clauses", [])):
+                    clause_text = clause.get("text", "")
+                    # Generate a unique clause ID: section.index
+                    unique_clause_id = f"{section_name}.{clause_idx}"
+                    if clause_text and len(clause_text.strip()) >= 20:
+                        all_clause_list.append({
+                            "text": clause_text,
+                            "section": section_name,
+                            "clause_number": unique_clause_id,
+                        })
+
+            logger.info(f"Running LLM batch detection on {len(all_clause_list)} clauses...")
+            llm_findings = await llm_detector.detect_risky_clauses(
+                clauses=all_clause_list,
+                company_name=company_name,
+                service_type=service_type,
+            )
+
+            # Index by clause_number for O(1) lookup
+            llm_findings_map = {f["clause_number"]: f for f in llm_findings}
+            logger.info(f"LLM batch detection complete: {len(llm_findings_map)} risky clauses identified")
+
+        except Exception as e:
+            logger.warning(f"LLM batch detection failed, continuing with keyword-only: {e}")
+            llm_findings_map = {}
 
         for section in sections:
-            section_name = section.get("section_name", "Unknown Section")
+            section_name = section.get("title", section.get("section_name", "Unknown Section"))
             clauses = section.get("clauses", [])
             total_clauses += len(clauses)
 
@@ -1408,6 +1787,12 @@ class AnomalyDetector:
                 clause_number = clause.get(
                     "clause_number", f"{section_name}.{clause_idx}"
                 )
+                # Use same unique ID as LLM batch for consistent lookup
+                llm_clause_id = f"{section_name}.{clause_idx}"
+
+                # Collect text for context detection
+                if clause_text:
+                    document_text_parts.append(clause_text)
 
                 if not clause_text or len(clause_text.strip()) < 20:
                     continue  # Skip only empty or very short clauses (< 20 chars)
@@ -1416,13 +1801,41 @@ class AnomalyDetector:
                     f"Analyzing clause {clause_number}: {clause_text[:100]}..."
                 )
 
-                # NEW: Run multi-stage detection (Pattern + Semantic + Statistical)
-                clause_dict = {'text': clause_text, 'section': section_name}
-                multi_stage_results = await self._run_multi_stage_detection(
-                    clause_text=clause_text,
-                    clause_dict=clause_dict,
-                    service_type=service_type
-                )
+                # Check if LLM already flagged this clause (fast path)
+                llm_finding_early = llm_findings_map.get(llm_clause_id)
+
+                if llm_finding_early:
+                    # FAST PATH: LLM already analyzed this clause — skip expensive multi-stage detection
+                    # Just run lightweight keyword detection for indicator data
+                    detected_indicators = self.risk_indicators.detect_indicators(
+                        clause_text=clause_text,
+                        service_type=service_type
+                    )
+                    # Compute confidence from indicators rather than hardcoding
+                    indicator_confidence = min(0.9, 0.5 + len(detected_indicators) * 0.1)
+                    multi_stage_results = {
+                        'detections': [{'method': 'pattern_based', 'indicators': detected_indicators, 'count': len(detected_indicators)}],
+                        'method_confidences': {'pattern_based': indicator_confidence if detected_indicators else 0.0},
+                        'stage1_confidence': indicator_confidence,
+                        'proceed_to_stage2': True,  # LLM flagged it, so always proceed
+                        'flags': {'pattern': bool(detected_indicators), 'semantic': False, 'statistical': False}
+                    }
+                    logger.info(f"  LLM-flagged clause — fast path (skipped semantic/statistical/RAG detection)")
+                else:
+                    # FULL PATH: Run multi-stage detection (Pattern + Semantic + Statistical)
+                    clause_dict = {'text': clause_text, 'section': section_name}
+                    multi_stage_results = await self._run_multi_stage_detection(
+                        clause_text=clause_text,
+                        clause_dict=clause_dict,
+                        service_type=service_type
+                    )
+
+                    # Extract pattern-based indicators for backward compatibility
+                    pattern_detection = next(
+                        (d for d in multi_stage_results['detections'] if d['method'] == 'pattern_based'),
+                        {'indicators': [], 'count': 0}
+                    )
+                    detected_indicators = pattern_detection.get('indicators', [])
 
                 # Collect full clauses for Stage 4 compound risk detection
                 full_clauses.append({
@@ -1431,13 +1844,6 @@ class AnomalyDetector:
                     'clause_number': clause_number,
                     'stage1_results': multi_stage_results
                 })
-
-                # Extract pattern-based indicators for backward compatibility
-                pattern_detection = next(
-                    (d for d in multi_stage_results['detections'] if d['method'] == 'pattern_based'),
-                    {'indicators': [], 'count': 0}
-                )
-                detected_indicators = pattern_detection.get('indicators', [])
 
                 logger.info(
                     f"Clause {clause_number}: Multi-stage detection complete - "
@@ -1457,59 +1863,7 @@ class AnomalyDetector:
                     ]
                     logger.info(f"  Pattern indicators: {indicator_summary}")
 
-                # STEP 1.5: Augment with semantic detection (Fix #5)
-                # Initialize semantic detector on first use (lazy initialization)
-                if not self._semantic_initialized:
-                    try:
-                        await self.semantic_detector.initialize()
-                        self._semantic_initialized = True
-                    except Exception as e:
-                        logger.warning(f"Semantic detector initialization failed: {e}")
-
-                # Add semantic detection if initialized
-                if self._semantic_initialized:
-                    try:
-                        detected_indicators = (
-                            await self.semantic_detector.augment_indicators(
-                                clause_text=clause_text,
-                                keyword_indicators=detected_indicators,
-                            )
-                        )
-                        logger.debug(
-                            f"Clause {clause_number}: Total indicators after semantic detection: "
-                            f"{len(detected_indicators)}"
-                        )
-                    except Exception as e:
-                        logger.warning(
-                            f"Semantic detection failed for clause {clause_number}: {e}"
-                        )
-                        # Continue with keyword indicators only
-
-                # STEP 2: Calculate prevalence in baseline corpus
-                try:
-                    prevalence = await self.prevalence_calc.calculate_prevalence(
-                        clause_text=clause_text, clause_type=section_name
-                    )
-                    logger.info(
-                        f"Clause {clause_number}: Prevalence = {prevalence:.2%} (threshold: 30%)"
-                    )
-                    logger.info(f"  Is unusual: {prevalence < 0.30}")
-                    logger.debug(
-                        f"Clause {clause_number}: Prevalence = {prevalence:.2%}"
-                    )
-                except Exception as e:
-                    logger.warning(
-                        f"Prevalence calculation failed for clause {clause_number}: {e}"
-                    )
-                    # Default to 10% (Fix #2 - unusual/rare when unknown)
-                    prevalence = 0.1  # Unknown but probably unusual
-                    logger.info(
-                        f"Clause {clause_number}: Prevalence defaulted to 10% (error)"
-                    )
-
-                # STEP 3: Determine if clause is suspicious
-                # NEW: Use multi-stage results to determine if suspicious
-                is_unusual = prevalence < 0.30  # Rare clause
+                # STEP 2: Determine if clause is suspicious FIRST (before expensive operations)
                 has_high_risk = any(
                     ind["severity"] == "high" for ind in detected_indicators
                 )
@@ -1517,21 +1871,99 @@ class AnomalyDetector:
                     ind["severity"] == "medium" for ind in detected_indicators
                 )
 
-                # Use multi-stage detection to decide if suspicious
-                is_suspicious = multi_stage_results['proceed_to_stage2']
+                # Use multi-stage detection OR LLM detection to decide if suspicious
+                llm_finding = llm_finding_early  # Already looked up above
+                is_suspicious = multi_stage_results['proceed_to_stage2'] or (llm_finding is not None)
 
-                # Additionally: Flag long clauses with vague language (legacy check)
+                # STEP 2a: Augment with semantic detection ONLY for suspicious clauses
+                # that weren't already flagged by LLM (LLM analysis is sufficient)
+                if is_suspicious and not llm_finding_early:
+                    if not self._semantic_initialized:
+                        try:
+                            await self.semantic_detector.initialize()
+                            self._semantic_initialized = True
+                        except Exception as e:
+                            logger.warning(f"Semantic detector initialization failed: {e}")
+
+                    if self._semantic_initialized:
+                        try:
+                            detected_indicators = (
+                                await self.semantic_detector.augment_indicators(
+                                    clause_text=clause_text,
+                                    keyword_indicators=detected_indicators,
+                                )
+                            )
+                            # Update risk flags after semantic augmentation
+                            has_high_risk = any(
+                                ind["severity"] == "high" for ind in detected_indicators
+                            )
+                            has_medium_risk = any(
+                                ind["severity"] == "medium" for ind in detected_indicators
+                            )
+                            logger.debug(
+                                f"Clause {clause_number}: Total indicators after semantic detection: "
+                                f"{len(detected_indicators)}"
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                f"Semantic detection failed for clause {clause_number}: {e}"
+                            )
+                            # Continue with keyword indicators only
+
+                # STEP 2b: Run RAG for all suspicious clauses (including LLM-flagged)
+                # to get prevalence data for severity calibration
+                rag_result = None
+                prevalence = 0.5  # Default: neutral prevalence
+
+                if is_suspicious:
+                    if self.rag_detector:
+                        try:
+                            rag_result = await self.rag_detector.analyze_clause(
+                                clause_text=clause_text,
+                                clause_number=clause_number,
+                                section=section_name,
+                                industry=service_type,
+                                service_type=service_type,
+                            )
+                            prevalence = rag_result.corpus_prevalence
+                            logger.info(
+                                f"Clause {clause_number}: RAG Prevalence = {prevalence:.2%} "
+                                f"(similar: {rag_result.similar_clauses_found}/{rag_result.total_corpus_docs})"
+                            )
+                            logger.info(
+                                f"  RAG Context: {[t.value for t in rag_result.context_tags]}"
+                            )
+                            logger.info(
+                                f"  RAG Risk: {rag_result.risk_score:.1f}/10 ({rag_result.risk_level})"
+                            )
+                        except Exception as e:
+                            logger.warning(f"RAG detection failed for clause {clause_number}: {e}")
+                            rag_result = None
+
+                    # Fallback to legacy prevalence calculation if RAG failed
+                    if rag_result is None:
+                        try:
+                            prevalence = await self.prevalence_calc.calculate_prevalence(
+                                clause_text=clause_text, clause_type=section_name
+                            )
+                            logger.info(
+                                f"Clause {clause_number}: Legacy Prevalence = {prevalence:.2%} (threshold: 30%)"
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                f"Prevalence calculation failed for clause {clause_number}: {e}"
+                            )
+                            prevalence = 0.1  # Unknown but probably unusual
+
+                is_unusual = prevalence < 0.30
+
+                # Vague language check disabled — "may", "might", "could" appear in virtually
+                # every legal clause and caused massive false positives
                 has_vague_language = False
-                if len(clause_text) > 500:
-                    vague_terms = ["may", "might", "could", "at our discretion", "as we see fit", "in our sole discretion"]
-                    has_vague = any(term in clause_text.lower() for term in vague_terms)
-                    if has_vague and not is_suspicious:
-                        is_suspicious = True
-                        has_vague_language = True
 
                 logger.info(
                     f"Clause {clause_number}: Decision - is_suspicious={is_suspicious} "
-                    f"(from multi-stage: {multi_stage_results['proceed_to_stage2']})"
+                    f"(keywords: {multi_stage_results['proceed_to_stage2']}, llm: {llm_finding is not None})"
                 )
                 logger.info(
                     f"  Reasons: unusual={is_unusual}, high_risk={has_high_risk}, "
@@ -1546,43 +1978,74 @@ class AnomalyDetector:
                 )
 
                 if is_suspicious:
-                    # STEP 4: Determine severity from INDICATORS (Fix #4 - Remove GPT-4 gate)
-                    # Severity is based on detected patterns, not GPT-4 opinion
+                    # STEP 4: Determine severity from INDICATORS + LLM + RAG CONTEXT
+                    from app.core.rag_anomaly_detector import ContextTag
+
+                    # Check RAG context tags for severity adjustment
+                    is_platform_required = False
+                    is_industry_standard = False
+                    is_user_triggered = False
+
+                    if rag_result and rag_result.context_tags:
+                        is_platform_required = ContextTag.REQUIRED_BY_PLATFORM in rag_result.context_tags
+                        is_industry_standard = ContextTag.INDUSTRY_STANDARD in rag_result.context_tags
+                        is_user_triggered = ContextTag.USER_TRIGGERED in rag_result.context_tags
+
+                    # Base severity from keyword indicators
                     if has_high_risk:
-                        severity = "high"
+                        keyword_severity = "high"
                     elif has_medium_risk:
-                        severity = "medium"
+                        keyword_severity = "medium"
                     elif is_unusual:
-                        severity = "low"
+                        keyword_severity = "low"
                     else:
-                        severity = "medium"  # Default for suspicious clauses
+                        keyword_severity = "medium"
 
-                    # STEP 5: Get GPT-4 for explanation/context (NOT for gating)
-                    try:
-                        risk_assessment = await self.risk_assessor.assess_risk(
-                            clause_text=clause_text,
-                            section=section_name,
-                            clause_number=clause_number,
-                            prevalence=prevalence,
-                            detected_indicators=detected_indicators,
-                            company_name=company_name,
-                        )
+                    # Merge severity: LLM is primary (better calibrated), keyword only escalates critical
+                    severity_order = {"critical": 4, "high": 3, "medium": 2, "low": 1}
+                    if llm_finding:
+                        llm_severity = llm_finding.get("severity", "medium")
+                        # Trust LLM severity, but let keywords escalate to critical
+                        if keyword_severity == "critical" and llm_severity != "critical":
+                            severity = "critical"
+                            logger.info(f"  Keywords escalated to CRITICAL (LLM was: {llm_severity})")
+                        else:
+                            severity = llm_severity
+                            logger.info(f"  Using LLM severity: {severity} (keyword was: {keyword_severity})")
+                    else:
+                        severity = keyword_severity
+                        logger.info(f"  Using keyword severity: {severity} (no LLM finding)")
 
-                        logger.info(
-                            f"Clause {clause_number}: GPT-4 details = {risk_assessment.get('risk_level', 'unknown')}"
-                        )
+                    # RAG CONTEXT ADJUSTMENT: Reduce severity for standard clauses
+                    # Never downgrade critical — those represent fundamental consumer harm
+                    if is_platform_required and severity != "critical":
+                        severity = "low"
+                        logger.info(f"  RAG adjusted severity to LOW (platform-required)")
+                    elif is_industry_standard and prevalence >= 0.50:
+                        if severity == "high":
+                            severity = "medium"
+                            logger.info(f"  RAG adjusted severity HIGH→MEDIUM (industry standard, {prevalence:.0%} prevalence)")
+                        elif severity == "medium":
+                            severity = "low"
+                            logger.info(f"  RAG adjusted severity MEDIUM→LOW (industry standard, {prevalence:.0%} prevalence)")
+                    elif is_user_triggered and severity == "high":
+                        severity = "medium"
+                        logger.info(f"  RAG adjusted severity HIGH→MEDIUM (user-triggered liability)")
+                    elif prevalence >= 0.70 and severity == "high":
+                        severity = "medium"
+                        logger.info(f"  Prevalence adjusted severity HIGH→MEDIUM ({prevalence:.0%} prevalence)")
 
-                        # Use GPT-4 explanation but keep indicator-based severity
-                        explanation = risk_assessment.get("explanation", "")
-                        consumer_impact = risk_assessment.get("consumer_impact", "")
-                        recommendation = risk_assessment.get("recommendation", "")
-                        risk_category = risk_assessment.get("risk_category", "other")
-
-                    except Exception as e:
-                        logger.warning(
-                            f"GPT-4 assessment failed for clause {clause_number}: {e}"
-                        )
-                        # Fallback: Generate basic explanation from indicators
+                    # STEP 5: Get explanation — from LLM batch (preferred) or fallback
+                    # NO per-clause Claude API calls — the LLM batch handles all explanations
+                    if llm_finding and llm_finding.get("explanation"):
+                        # LLM batch already provided explanation
+                        explanation = llm_finding["explanation"]
+                        consumer_impact = llm_finding.get("consumer_impact", "")
+                        recommendation = llm_finding.get("recommendation", "")
+                        risk_category = llm_finding.get("risk_category", "other")
+                        logger.info(f"Clause {clause_number}: Using LLM batch explanation (saved API call)")
+                    else:
+                        # Keyword-only finding — use indicator-based explanation (no API call)
                         explanation = self._generate_fallback_explanation(
                             detected_indicators, prevalence
                         )
@@ -1595,14 +2058,16 @@ class AnomalyDetector:
                             if detected_indicators
                             else "other"
                         )
+                        logger.info(f"Clause {clause_number}: Using keyword-based explanation (no API call)")
 
-                    # ALWAYS flag suspicious clauses (Fix #4 - No GPT-4 gate)
+                    # ALWAYS flag suspicious clauses
                     anomaly = {
                         "document_id": document_id,
                         "section": section_name,
                         "clause_number": clause_number,
                         "clause_text": clause_text,
-                        "severity": severity,  # From indicators, not GPT-4
+                        "severity": severity,
+                        "severity_source": "llm" if llm_finding else "keyword",
                         "explanation": explanation,
                         "consumer_impact": consumer_impact,
                         "recommendation": recommendation,
@@ -1629,7 +2094,20 @@ class AnomalyDetector:
                             "stage1_confidence": multi_stage_results['stage1_confidence'],
                             "proceed_to_stage2": multi_stage_results['proceed_to_stage2'],
                             "flags": multi_stage_results['flags']
-                        }
+                        },
+                        # NEW: RAG context data for accurate risk assessment
+                        "rag_context": {
+                            "context_tags": [t.value for t in rag_result.context_tags] if rag_result else [],
+                            "context_explanation": rag_result.context_explanation if rag_result else "",
+                            "harm_score": rag_result.harm_score if rag_result else 5.0,
+                            "unusualness_score": rag_result.unusualness_score if rag_result else 5.0,
+                            "enforceability_score": rag_result.enforceability_score if rag_result else 5.0,
+                            "rag_risk_score": rag_result.risk_score if rag_result else None,
+                            "rag_risk_level": rag_result.risk_level if rag_result else None,
+                            "is_platform_required": is_platform_required,
+                            "is_industry_standard": is_industry_standard,
+                            "is_user_triggered": is_user_triggered,
+                        } if rag_result else None
                     }
 
                     all_anomalies.append(anomaly)
@@ -1650,15 +2128,23 @@ class AnomalyDetector:
                 'is_change': False
             }
 
-        # Run Stage 2 filtering
+        # Build full document text for context detection
+        full_document_text = "\n\n".join(document_text_parts)
+
+        # Run Stage 2 filtering (with Context-Aware Layer)
         all_anomalies = await self.run_stage2(
             stage1_results=all_anomalies,
-            document_context=document_context
+            document_context=document_context,
+            document_text=full_document_text
         )
 
+        # Capture Stage 2 metrics BEFORE Stage 3 clustering changes the list
+        stage2_passed_count = sum(1 for a in all_anomalies if a.get('proceed_to_stage3', False))
+        stage2_filtered_count = len(all_anomalies) - stage2_passed_count
+
         logger.info(
-            f"Stage 2 complete: {sum(1 for a in all_anomalies if a.get('proceed_to_stage3', False))} "
-            f"anomalies proceeding to Stage 3"
+            f"Stage 2 complete: {stage2_passed_count} "
+            f"anomalies proceeding to Stage 3, {stage2_filtered_count} filtered out"
         )
 
         # STAGE 3: Apply clustering and deduplication
@@ -1710,7 +2196,7 @@ class AnomalyDetector:
 
         # Store compound risks summary for document-level reporting
         for anomaly in all_anomalies:
-            if not hasattr(anomaly, "_compound_risks_summary"):
+            if "_compound_risks_summary" not in anomaly:
                 anomaly["_compound_risks_summary"] = stage4_result['compound_risks']
 
         logger.info(
@@ -1776,7 +2262,8 @@ class AnomalyDetector:
 
         pipeline_performance = {
             'stage1_detections': stage1_initial,
-            'stage2_filtered': sum(1 for a in all_anomalies if a.get('proceed_to_stage3', False)),
+            'stage2_passed': stage2_passed_count,
+            'stage2_filtered_out': stage2_filtered_count,
             'stage3_clustered': stage3_result.get('final_count', 0),
             'stage4_compounds': len(stage4_result.get('compound_risks', [])),
             'stage5_calibrated': stage5_result.get('anomalies_calibrated', 0),
@@ -1787,6 +2274,48 @@ class AnomalyDetector:
 
         # Build final comprehensive report
         from datetime import datetime
+
+        # Run competitive analysis to benchmark against industry peers
+        competitive_benchmark = None
+        try:
+            competitive_analyzer = CompetitiveAnalyzer()
+
+            # Extract detected risk categories from anomalies
+            detected_categories = list(set(
+                a.get('risk_category', '') for a in all_anomalies
+                if a.get('risk_category')
+            ))
+
+            # Get industry from context detection
+            industry = document_context.get('industry', 'general') if document_context else 'general'
+
+            competitive_benchmark = competitive_analyzer.analyze(
+                document_risk_score=overall_risk_score,
+                industry=industry,
+                company_name=company_name,
+                detected_risk_categories=detected_categories,
+                high_severity_count=len(stage6_result['high_severity']),
+                medium_severity_count=len(stage6_result['medium_severity'])
+            )
+
+            logger.info(
+                f"Competitive analysis: {industry} industry, "
+                f"percentile={competitive_benchmark.get('percentile_rank', 'N/A')}, "
+                f"comparison={competitive_benchmark.get('risk_comparison', 'unknown')}"
+            )
+        except Exception as e:
+            logger.warning(f"Competitive analysis failed: {e}")
+            competitive_benchmark = None
+
+        # INVERTED FUNNEL: Enrich anomalies with threat level and commonness
+        inverted_funnel_data = self._enrich_with_inverted_funnel(
+            all_anomalies=all_anomalies,
+            high_severity=stage6_result['high_severity'],
+            medium_severity=stage6_result['medium_severity'],
+            low_severity=stage6_result['low_severity'],
+            industry=document_context.get('industry', 'general') if document_context else 'general'
+        )
+
         final_report = {
             'document_id': document_id,
             'company_name': company_name,
@@ -1795,12 +2324,15 @@ class AnomalyDetector:
             'high_severity_alerts': stage6_result['high_severity'],
             'medium_severity_alerts': stage6_result['medium_severity'],
             'low_severity_alerts': stage6_result['low_severity'],
-            'suppressed_alerts_count': len(stage6_result['suppressed']),
+            'suppressed_alerts_count': len(stage6_result['suppressed']) + stage2_filtered_count,
             'total_anomalies_detected': stage6_result['total_detected'],
             'total_alerts_shown': stage6_result['total_shown'],
             'compound_risks': stage4_result.get('compound_risks', []),
             'ranking_metadata': stage6_result.get('ranking_metadata', {}),
-            'pipeline_performance': pipeline_performance
+            'pipeline_performance': pipeline_performance,
+            'competitive_benchmark': competitive_benchmark,
+            # NEW: Inverted Funnel categorization
+            'inverted_funnel': inverted_funnel_data
         }
 
         # Log pipeline summary
@@ -1824,7 +2356,7 @@ class AnomalyDetector:
         self, detected_indicators: List[Dict], prevalence: float
     ) -> str:
         """
-        Generate basic explanation when GPT-4 fails (Fix #4 - Fallback).
+        Generate basic explanation when Claude fails (Fallback).
 
         Args:
             detected_indicators: List of detected risk indicators
@@ -1854,6 +2386,195 @@ class AnomalyDetector:
             explanation += f" Additionally, this clause is rare (found in only {prevalence*100:.0f}% of similar services)."
 
         return explanation
+
+    def _enrich_with_inverted_funnel(
+        self,
+        all_anomalies: List[Dict[str, Any]],
+        high_severity: List[Dict[str, Any]],
+        medium_severity: List[Dict[str, Any]],
+        low_severity: List[Dict[str, Any]],
+        industry: str = "general",
+    ) -> Dict[str, Any]:
+        """
+        Enrich anomalies with inverted funnel data (threat level + commonness).
+
+        Takes the existing anomalies and adds:
+        - threat_level: Based on consumer harm (CRITICAL/HIGH/MEDIUM/LOW/INFO)
+        - commonness_level: How common the pattern is (UNIVERSAL to VERY_RARE)
+        - display_category: Combined categorization for UI
+        - user_importance_score: Ranking score for user relevance
+
+        Args:
+            all_anomalies: All detected anomalies
+            high_severity: High severity alerts from Stage 6
+            medium_severity: Medium severity alerts from Stage 6
+            low_severity: Low severity alerts from Stage 6
+            industry: Industry for commonness context
+
+        Returns:
+            Dictionary with inverted funnel categorized anomalies
+        """
+        from app.core.constants import (
+            PATTERN_THREAT_LEVELS,
+            CommonnessThresholds,
+            UserImportanceConfig,
+        )
+
+        # Combine all alerts
+        all_alerts = high_severity + medium_severity + low_severity
+
+        # Categorize by display category
+        unusual_dangerous = []
+        common_dangerous = []
+        unusual_minor = []
+        standard_terms = []
+
+        # Track distributions
+        threat_distribution = {
+            'critical': 0,
+            'high': 0,
+            'medium': 0,
+            'low': 0,
+            'info': 0
+        }
+        commonness_distribution = {
+            'universal': 0,
+            'very_common': 0,
+            'common': 0,
+            'uncommon': 0,
+            'rare': 0,
+            'very_rare': 0
+        }
+
+        # Pattern frequency
+        pattern_counts = {}
+
+        for alert in all_alerts:
+            # Extract pattern/risk_category
+            risk_category = alert.get('risk_category', 'other')
+            detected_indicators = alert.get('detected_indicators', [])
+            patterns = [ind.get('name', '') for ind in detected_indicators] if detected_indicators else [risk_category]
+
+            # Get threat score (use highest from patterns)
+            threat_score = 5.0  # Default medium
+            for pattern in patterns:
+                score = PATTERN_THREAT_LEVELS.get(pattern, 5.0)
+                if score > threat_score:
+                    threat_score = score
+
+                # Count patterns
+                if pattern:
+                    pattern_counts[pattern] = pattern_counts.get(pattern, 0) + 1
+
+            # Get commonness from prevalence
+            prevalence = alert.get('prevalence', 0.30)
+            commonness_level = CommonnessThresholds.get_level(prevalence)
+
+            # NEW: Use RAG context to adjust threat score
+            # This prevents overinflation of standard industry clauses
+            rag_context = alert.get('rag_context')
+            if rag_context:
+                # Platform-required clauses (Apple, Google) = reduce threat significantly
+                if rag_context.get('is_platform_required'):
+                    threat_score = min(threat_score, 2.0)  # Cap at INFO level
+                    logger.debug(f"RAG: Reduced threat score to {threat_score} (platform-required)")
+                # Industry standard + high prevalence = reduce threat
+                elif rag_context.get('is_industry_standard') and prevalence >= 0.70:
+                    threat_score = min(threat_score, 4.0)  # Cap at LOW level
+                    logger.debug(f"RAG: Reduced threat score to {threat_score} (industry standard)")
+                # User-triggered liability = slightly reduce
+                elif rag_context.get('is_user_triggered') and threat_score > 6.0:
+                    threat_score = threat_score * 0.85  # 15% reduction
+                    logger.debug(f"RAG: Reduced threat score to {threat_score} (user-triggered)")
+                # Use RAG harm score if available and lower
+                elif rag_context.get('rag_risk_score') and rag_context['rag_risk_score'] < threat_score:
+                    # Blend RAG score with pattern score (60% RAG, 40% pattern)
+                    threat_score = (rag_context['rag_risk_score'] * 0.6) + (threat_score * 0.4)
+                    logger.debug(f"RAG: Blended threat score to {threat_score}")
+
+            # Calculate threat level
+            threat_level = get_threat_level_from_score(threat_score)
+
+            # Calculate user importance score
+            importance_score = UserImportanceConfig.calculate_importance(
+                threat_score=threat_score,
+                commonness=commonness_level
+            )
+
+            # Get display category
+            display_category = get_display_category(threat_level, commonness_level)
+
+            # Get human-readable threat description
+            threat_descriptions = {
+                ThreatLevel.CRITICAL: "This clause poses serious risk to consumers",
+                ThreatLevel.HIGH: "This clause significantly impacts your rights",
+                ThreatLevel.MEDIUM: "This clause is worth knowing about",
+                ThreatLevel.LOW: "Standard clause with some consumer implications",
+                ThreatLevel.INFO: "Standard legal boilerplate",
+            }
+
+            # Enrich the alert with inverted funnel data
+            enriched_alert = {
+                **alert,
+                'threat_level': threat_level.value,
+                'threat_score': threat_score,
+                'commonness_level': commonness_level.value,
+                'commonness_percentage': prevalence * 100,
+                'display_category': display_category.value,
+                'user_importance_score': importance_score,
+                'why_threatening': threat_descriptions.get(threat_level, ""),
+            }
+
+            # Update distributions
+            threat_distribution[threat_level.value] += 1
+            commonness_distribution[commonness_level.value] += 1
+
+            # Categorize into display buckets
+            if display_category == DisplayCategory.UNUSUAL_DANGEROUS:
+                unusual_dangerous.append(enriched_alert)
+            elif display_category == DisplayCategory.COMMON_DANGEROUS:
+                common_dangerous.append(enriched_alert)
+            elif display_category == DisplayCategory.UNUSUAL_MINOR:
+                unusual_minor.append(enriched_alert)
+            else:
+                standard_terms.append(enriched_alert)
+
+        # Sort each category by importance score
+        unusual_dangerous.sort(key=lambda x: x.get('user_importance_score', 0), reverse=True)
+        common_dangerous.sort(key=lambda x: x.get('user_importance_score', 0), reverse=True)
+        unusual_minor.sort(key=lambda x: x.get('user_importance_score', 0), reverse=True)
+        standard_terms.sort(key=lambda x: x.get('user_importance_score', 0), reverse=True)
+
+        # Top patterns
+        top_patterns = sorted(
+            [{'pattern': p, 'count': c} for p, c in pattern_counts.items()],
+            key=lambda x: x['count'],
+            reverse=True
+        )[:10]
+
+        logger.info(
+            f"Inverted Funnel enrichment: "
+            f"UNUSUAL_DANGEROUS={len(unusual_dangerous)}, "
+            f"COMMON_DANGEROUS={len(common_dangerous)}, "
+            f"UNUSUAL_MINOR={len(unusual_minor)}, "
+            f"STANDARD_TERMS={len(standard_terms)}"
+        )
+
+        return {
+            'unusual_dangerous': unusual_dangerous,
+            'common_dangerous': common_dangerous,
+            'unusual_minor': unusual_minor,
+            'standard_terms': standard_terms,
+            'category_summary': {
+                'unusual_dangerous_count': len(unusual_dangerous),
+                'common_dangerous_count': len(common_dangerous),
+                'unusual_minor_count': len(unusual_minor),
+                'standard_terms_count': len(standard_terms),
+            },
+            'threat_distribution': threat_distribution,
+            'commonness_distribution': commonness_distribution,
+            'top_patterns': top_patterns,
+        }
 
     def calculate_document_risk_score(
         self, anomalies: List[Dict[str, Any]]

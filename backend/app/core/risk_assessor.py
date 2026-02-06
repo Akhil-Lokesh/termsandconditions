@@ -1,53 +1,42 @@
 """
-Risk assessor using GPT-5-Nano (or GPT-4o-mini fallback) for evaluating clause risk.
+Risk assessor using Claude for evaluating clause risk.
 
 Acts as a CONSUMER ADVOCATE, not a company lawyer.
 Identifies clauses that would surprise or harm the average consumer.
 """
 
 import json
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 from sqlalchemy.orm import Session
 
-from app.services.openai_service import OpenAIService
-from app.services.gpt5_service import GPT5Service
 from app.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
 
 class RiskAssessor:
-    """Assesses risk level of clauses using GPT-5-Nano (with GPT-4o-mini fallback) as a consumer protection tool."""
+    """Assesses risk level of clauses using Claude as a consumer protection tool."""
 
     def __init__(
         self,
-        openai_service: Optional[OpenAIService] = None,
-        use_gpt5: bool = True,
+        llm_service=None,
+        use_gpt5: bool = False,  # Deprecated parameter, ignored
         db: Optional[Session] = None,
     ):
         """
         Initialize risk assessor.
 
         Args:
-            openai_service: Optional OpenAI service instance
-            use_gpt5: If True, try GPT-5-Nano first (fallback to GPT-4o-mini on error)
+            llm_service: LLM service (ClaudeService) with create_structured_completion
+            use_gpt5: Deprecated parameter, ignored
             db: Optional database session for potential future use
         """
-        self.openai = openai_service or OpenAIService()
-        self.use_gpt5 = use_gpt5
-        self.gpt5_service = None
+        if llm_service is None:
+            from app.services.claude_service import ClaudeService
+            llm_service = ClaudeService()
+        self.llm = llm_service
         self.db = db  # Store for potential future use
-
-        # Initialize GPT-5 service if requested
-        if use_gpt5:
-            try:
-                self.gpt5_service = GPT5Service()
-                logger.info("GPT-5 service initialized for risk assessment")
-            except Exception as e:
-                logger.warning(
-                    f"GPT-5 service initialization failed, will use GPT-4o-mini: {e}"
-                )
-                self.use_gpt5 = False
+        logger.info("LLM service initialized for risk assessment")
 
     async def assess_risk(
         self,
@@ -148,8 +137,8 @@ RESPOND IN JSON:
   "risk_level": "high" | "medium" | "low",
   "risk_category": "liability" | "payment" | "privacy" | "arbitration" | "modification" | "termination" | "content" | "data" | "other",
   "explanation": "2-3 sentences explaining why this is risky for consumers (or why it's okay). Be specific about the consumer harm.",
-  "consumer_impact": "One sentence: How does this practically affect someone using the service?",
-  "recommendation": "What should consumers know or do about this clause?"
+  "consumer_impact": "One sentence: How does this practically affect someone using the service? Be specific about the financial, legal, or practical consequences.",
+  "recommendation": "Give 2-3 specific, actionable steps the consumer can take. For example: 'Set a calendar reminder before trial ends', 'Use a virtual credit card', 'Export your data before canceling', 'Read the arbitration opt-out section within 30 days'. Be concrete and practical, not generic."
 }}
 
 Be CRITICAL but FAIR. If it's genuinely risky for consumers, say so clearly. If it's standard protection, say that too.
@@ -157,51 +146,24 @@ Be CRITICAL but FAIR. If it's genuinely risky for consumers, say so clearly. If 
 JSON Response:"""
 
         try:
-            # Try GPT-5-Nano first (if available), fallback to GPT-4o-mini
-            if self.use_gpt5 and self.gpt5_service:
-                try:
-                    logger.debug(
-                        f"Using GPT-5-Nano for risk assessment of clause {clause_number}"
-                    )
-
-                    # Use GPT-5 Responses API with correct parameters
-                    result = await self.gpt5_service.create_json_response(
-                        prompt=prompt,
-                        model="gpt-5-nano",
-                        reasoning_effort="medium",  # Balanced quality/cost for anomaly detection
-                    )
-
-                    logger.debug(
-                        f"GPT-5-Nano assessment for clause {clause_number}: "
-                        f"{result.get('risk_level', 'unknown')} - {result.get('explanation', '')[:100]}"
-                    )
-
-                    return result
-
-                except Exception as e:
-                    logger.warning(
-                        f"GPT-5-Nano failed for clause {clause_number}, falling back to GPT-4o-mini: {e}"
-                    )
-                    # Continue to GPT-4o-mini fallback below
-
-            # Fallback: Use GPT-4o-mini (reliable, working)
+            # Use LLM for risk assessment
             logger.debug(
-                f"Using GPT-4o-mini for risk assessment of clause {clause_number}"
+                f"Using LLM for risk assessment of clause {clause_number}"
             )
-            result = await self.openai.create_structured_completion(
-                prompt=prompt, model="gpt-4o-mini", temperature=0.3
+
+            result = await self.llm.create_structured_completion(
+                prompt=prompt, temperature=0.3
             )
 
             logger.debug(
-                f"GPT-4o-mini assessment for clause {clause_number}: "
+                f"LLM assessment for clause {clause_number}: "
                 f"{result.get('risk_level', 'unknown')} - {result.get('explanation', '')[:100]}"
             )
 
             return result
 
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse GPT-4 response as JSON: {e}")
-            logger.error(f"Result was: {result}")
+            logger.error(f"Failed to parse LLM response as JSON: {e}")
 
             # Fallback based on indicators
             if any(ind["severity"] == "high" for ind in detected_indicators):
@@ -214,7 +176,7 @@ JSON Response:"""
             return {
                 "risk_level": fallback_level,
                 "risk_category": "other",
-                "explanation": "Risk assessment based on detected indicators (GPT-4 parsing failed).",
+                "explanation": "Risk assessment based on detected indicators.",
                 "consumer_impact": f"Detected {len(detected_indicators)} potential issues.",
                 "recommendation": "Review this clause carefully.",
             }

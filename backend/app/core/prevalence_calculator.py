@@ -77,16 +77,19 @@ class PrevalenceCalculator:
             scores = [c.get("score", 0) for c in similar_clauses[:5]]
             avg_similarity = sum(scores) / len(scores) if scores else 0
 
-            # Convert similarity to prevalence:
-            # - Similarity > 0.75 = very common (prevalence 60-90%)
-            # - Similarity 0.5-0.75 = somewhat common (prevalence 30-60%)
-            # - Similarity < 0.5 = rare (prevalence 0-30%)
-            if avg_similarity > 0.75:
-                prevalence = 0.6 + (avg_similarity - 0.75) * 1.2  # 60-90%
-            elif avg_similarity > 0.5:
-                prevalence = 0.3 + (avg_similarity - 0.5) * 1.2  # 30-60%
+            # Convert similarity to prevalence with wider range:
+            # - Similarity > 0.85 = very common (prevalence 80-95%)
+            # - Similarity 0.70-0.85 = common (prevalence 50-80%)
+            # - Similarity 0.50-0.70 = uncommon (prevalence 20-50%)
+            # - Similarity < 0.50 = rare (prevalence 0-20%)
+            if avg_similarity > 0.85:
+                prevalence = 0.80 + (avg_similarity - 0.85) * 1.0  # 80-95%
+            elif avg_similarity > 0.70:
+                prevalence = 0.50 + (avg_similarity - 0.70) * 2.0  # 50-80%
+            elif avg_similarity > 0.50:
+                prevalence = 0.20 + (avg_similarity - 0.50) * 1.5  # 20-50%
             else:
-                prevalence = avg_similarity * 0.6  # 0-30%
+                prevalence = avg_similarity * 0.4  # 0-20%
 
             # Clamp to 0-1 range
             prevalence = max(0.0, min(1.0, prevalence))

@@ -35,7 +35,7 @@ from app.core.config import settings
 from app.core.document_processor import DocumentProcessor
 from app.core.structure_extractor import StructureExtractor
 from app.core.legal_chunker import LegalChunker
-from app.services.openai_service import OpenAIService
+from app.services.embedding_service import EmbeddingService
 from app.services.pinecone_service import PineconeService
 
 # Configure logging
@@ -59,11 +59,11 @@ class CorpusIndexer:
 
     def __init__(
         self,
-        openai_service: OpenAIService,
+        embedding_service: EmbeddingService,
         pinecone_service: PineconeService,
         dry_run: bool = False
     ):
-        self.openai = openai_service
+        self.embedding = embedding_service
         self.pinecone = pinecone_service
         self.dry_run = dry_run
 
@@ -188,7 +188,7 @@ class CorpusIndexer:
             # Step 4: Generate embeddings
             logger.info(f"   4/5 Generating embeddings...")
             texts = [chunk["text"] for chunk in chunks]
-            embeddings = await self.openai.batch_create_embeddings(texts)
+            embeddings = await self.embedding.batch_create_embeddings(texts)
 
             for chunk, embedding in zip(chunks, embeddings):
                 chunk["embedding"] = embedding
@@ -351,8 +351,8 @@ class CorpusIndexer:
 
         # Cost estimate
         if self.stats['total_chunks'] > 0:
-            embedding_cost = (self.stats['total_chunks'] / 1000) * 0.02  # $0.02 per 1K tokens
-            logger.info(f"\n💰 Estimated OpenAI Cost: ${embedding_cost:.2f}")
+            # Using local embeddings - no API cost
+            logger.info(f"\n💰 Embedding Cost: $0.00 (using local model)")
 
 
 # ============================================================================
@@ -420,13 +420,13 @@ Examples:
     # Initialize services
     try:
         logger.info("Initializing services...")
-        openai_service = OpenAIService()
+        embedding_service = EmbeddingService()
         pinecone_service = PineconeService()
         await pinecone_service.initialize()
 
         # Create indexer
         indexer = CorpusIndexer(
-            openai_service=openai_service,
+            embedding_service=embedding_service,
             pinecone_service=pinecone_service,
             dry_run=args.dry_run
         )
@@ -440,7 +440,7 @@ Examples:
         )
 
         # Cleanup
-        await openai_service.close()
+        pass
         await pinecone_service.close()
 
         logger.info("\n✅ Indexing complete!")

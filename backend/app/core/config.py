@@ -1,3 +1,4 @@
+
 """
 Configuration settings for the T&C Analysis System.
 
@@ -18,13 +19,12 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     DEBUG: bool = False
 
-    # OpenAI Configuration
-    OPENAI_API_KEY: str
-    OPENAI_MODEL_GPT4: str = "gpt-4"
-    OPENAI_MODEL_GPT35: str = "gpt-3.5-turbo"
-    OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
-    OPENAI_MAX_RETRIES: int = 3
-    OPENAI_TIMEOUT: int = 60
+    # Anthropic Claude Configuration
+    ANTHROPIC_API_KEY: str
+    CLAUDE_MODEL: str = "claude-sonnet-4.5-20250514"
+    CLAUDE_MODEL_FAST: str = "claude-4.5-haiku-20250514"
+    CLAUDE_MAX_RETRIES: int = 3
+    CLAUDE_TIMEOUT: int = 60
 
     # Pinecone Configuration
     PINECONE_API_KEY: str

@@ -17,6 +17,31 @@ class DocumentCreate(DocumentBase):
     pass
 
 
+class TextUploadRequest(BaseModel):
+    """Schema for uploading T&C as raw text."""
+
+    text: str = Field(
+        ...,
+        min_length=100,
+        max_length=500000,
+        description="Raw T&C text content (100-500,000 characters)"
+    )
+    title: Optional[str] = Field(
+        default=None,
+        max_length=255,
+        description="Optional title for the document"
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "text": "Terms of Service\n\n1. Introduction\nWelcome to our service...",
+                "title": "Company Name Terms of Service"
+            }
+        }
+    }
+
+
 class DocumentMetadata(BaseModel):
     """Schema for document metadata."""
 
@@ -43,6 +68,12 @@ class DocumentResponse(BaseModel):
     )
     anomaly_count: Optional[int] = Field(
         default=0, description="Number of anomalies detected"
+    )
+    risk_score: Optional[float] = Field(
+        default=None, description="Overall risk score (1-10)"
+    )
+    risk_level: Optional[str] = Field(
+        default=None, description="Risk level: Low, Medium, High"
     )
     processing_status: str = Field(
         description="Processing status: pending, completed, failed, etc."

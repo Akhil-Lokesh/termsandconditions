@@ -37,19 +37,19 @@ class FileSizeExceededError(TCAnalysisException):
     pass
 
 
-class OpenAIServiceError(TCAnalysisException):
-    """Exception raised when OpenAI API call fails."""
+class ServiceError(TCAnalysisException):
+    """Exception raised when an external service call fails."""
 
     pass
 
 
-class EmbeddingError(OpenAIServiceError):
+class EmbeddingError(ServiceError):
     """Exception raised when embedding generation fails."""
 
     pass
 
 
-class LLMCompletionError(OpenAIServiceError):
+class LLMCompletionError(ServiceError):
     """Exception raised when LLM completion generation fails."""
 
     pass

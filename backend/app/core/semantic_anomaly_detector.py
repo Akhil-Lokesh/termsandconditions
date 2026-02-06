@@ -165,7 +165,7 @@ class SemanticAnomalyDetector:
     def __init__(
         self,
         model_name: str = 'sentence-transformers/all-MiniLM-L6-v2',
-        similarity_threshold: float = 0.75,
+        similarity_threshold: float = 0.60,  # INCREASED from 0.45 to reduce false positives
         cache_dir: Optional[str] = None
     ):
         """
@@ -175,6 +175,7 @@ class SemanticAnomalyDetector:
             model_name: Name of the sentence transformer model to use
                        Default is a lightweight model; use 'nlpaueb/legal-bert-base-uncased' for legal domain
             similarity_threshold: Minimum cosine similarity to flag as anomalous (0.0 to 1.0)
+                                 Note: Set to 0.60 to require stronger match (reduce false positives)
             cache_dir: Directory to cache model and embeddings
         """
         self.model_name = model_name
@@ -228,7 +229,9 @@ class SemanticAnomalyDetector:
         Returns:
             NumPy array of embeddings, shape (num_patterns, embedding_dim)
         """
-        if not self.is_available or self.model is None:
+        # NOTE: Don't check self.is_available here - it's set AFTER this method is called
+        # Only check if model is loaded
+        if self.model is None:
             return np.array([])
 
         # Check cache first
@@ -338,35 +341,39 @@ class SemanticAnomalyDetector:
             max_similarity_idx = int(np.argmax(similarities))
             max_similarity = float(similarities[max_similarity_idx])
 
-            # Get all matches above threshold
+            # Get all matches above a LOWER threshold (0.35) to show partial matches
+            # This helps users see borderline cases even if not flagged as anomalous
+            DISPLAY_THRESHOLD = 0.35  # Show matches above 35% similarity
             all_matches = []
             for idx, sim in enumerate(similarities):
-                if sim >= self.similarity_threshold:
+                if sim >= DISPLAY_THRESHOLD:
                     pattern = self.problematic_patterns[idx]
                     all_matches.append({
                         'category': pattern['category'],
                         'description': pattern['description'],
                         'severity': pattern['severity'],
-                        'similarity': float(sim)
+                        'similarity': float(sim),
+                        'above_threshold': sim >= self.similarity_threshold
                     })
 
             # Sort by similarity (highest first)
             all_matches.sort(key=lambda x: x['similarity'], reverse=True)
 
-            # Determine if anomalous
+            # Determine if anomalous (using main threshold)
             is_anomalous = max_similarity >= self.similarity_threshold
 
             # Get matched pattern info
             matched_pattern_info = self.problematic_patterns[max_similarity_idx]
 
-            # Calculate confidence (scale similarity to confidence)
-            # Similarity of 0.75 = 50% confidence, 1.0 = 100% confidence
+            # Confidence calculation based on similarity threshold
+            # With threshold of 0.60: similarity 0.60 = 55% confidence, 1.0 = 100% confidence
             if is_anomalous:
-                confidence = min(1.0, (max_similarity - self.similarity_threshold) / (1.0 - self.similarity_threshold))
-                confidence = 0.5 + (confidence * 0.5)  # Scale to [0.5, 1.0] range
+                # Scale from threshold (55%) to 1.0 (100%)
+                normalized = (max_similarity - self.similarity_threshold) / (1.0 - self.similarity_threshold)
+                confidence = 0.55 + (normalized * 0.45)  # Range: [0.55, 1.0]
             else:
-                confidence = max_similarity / self.similarity_threshold  # Scale to [0, 1.0] range
-                confidence = confidence * 0.5  # Scale to [0, 0.5] range
+                # Below threshold: scale from 0 to 0.55 based on how close to threshold
+                confidence = (max_similarity / self.similarity_threshold) * 0.55  # Range: [0, 0.55]
 
             result = {
                 'is_anomalous': is_anomalous,

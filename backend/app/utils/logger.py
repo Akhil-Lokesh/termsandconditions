@@ -11,6 +11,10 @@ def setup_logger(
     """
     Set up a logger with consistent formatting.
 
+    Since main.py calls logging.basicConfig() which sets up the root logger,
+    we don't need to add our own handlers - just return the logger.
+    This prevents duplicate log messages.
+
     Args:
         name: Logger name (typically __name__)
         level: Logging level
@@ -22,22 +26,9 @@ def setup_logger(
     logger = logging.getLogger(name)
     logger.setLevel(level)
 
-    # Avoid adding multiple handlers
-    if logger.handlers:
-        return logger
-
-    # Create console handler
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setLevel(level)
-
-    # Create formatter
-    if format_string is None:
-        format_string = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-
-    formatter = logging.Formatter(format_string)
-    handler.setFormatter(formatter)
-
-    # Add handler to logger
-    logger.addHandler(handler)
+    # Don't add handlers - let the root logger (configured in main.py) handle output
+    # This prevents duplicate log messages
+    # Set propagate to True so logs go to root logger
+    logger.propagate = True
 
     return logger

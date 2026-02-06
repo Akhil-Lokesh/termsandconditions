@@ -246,9 +246,9 @@ class IndustryBaselineFilter:
 
             logger.debug(f"Querying baseline: industry={industry}, category={category}")
 
-            # Search for similar clauses
-            similar_results = await self.pinecone.search(
-                embedding=clause_embedding,
+            # Search for similar clauses using query method
+            similar_results = await self.pinecone.query(
+                query_embedding=clause_embedding,
                 namespace=namespace,
                 filter=query_filter,
                 top_k=100  # Get more results to count unique documents
@@ -363,28 +363,93 @@ class IndustryBaselineFilter:
                 'description': 'Unknown industry'
             }
 
+        # Import critical patterns to prevent suppression of important patterns
+        from app.core.constants import CriticalPatterns, PrevalenceThresholds
+
+        # Normalize category for comparison
+        category_normalized = (category or '').lower().replace('-', '_').replace(' ', '_')
+
+        # Check if this is a critical pattern that should never be suppressed
+        is_critical_pattern = category_normalized in CriticalPatterns.ALWAYS_CRITICAL
+
         # Start with base industry modifier
         modifier = industry_config['modifier']
         adjustments = []
         reasoning_parts = []
+        action = 'normal'  # 'suppress', 'reduce', 'normal', 'amplify'
 
         reasoning_parts.append(f"Industry: {industry_config['description']}")
 
-        # Adjustment 1: Prevalence-based
-        if prevalence >= 0.70:
-            # Very common - reduce severity
-            prevalence_factor = 0.5
+        # ============================================================
+        # PREVALENCE-BASED FILTERING (more aggressive)
+        # ============================================================
+
+        # CRITICAL PATTERNS: Never suppress, even if common
+        if is_critical_pattern:
+            # Keep or amplify critical patterns
+            reasoning_parts.append(
+                f"Critical consumer harm pattern ({category}) - always shown regardless of prevalence"
+            )
+            adjustments.append({
+                'type': 'critical_pattern',
+                'factor': 1.0,
+                'reason': f'Critical pattern - never suppressed'
+            })
+            action = 'amplify'
+
+        # VERY COMMON (85%+): Suppress entirely (unless critical)
+        elif prevalence >= PrevalenceThresholds.VERY_COMMON_THRESHOLD:
+            # Suppress entirely - return zero score
+            logger.info(
+                f"Suppressing very common clause: {category} in {industry} "
+                f"(prevalence {prevalence:.0%} >= 85%)"
+            )
+            return {
+                'base_score': base_risk_score,
+                'industry_modifier': 0.0,
+                'adjusted_score': 0.0,
+                'reasoning': f'Standard T&C language in {industry} (found in {prevalence:.0%}) - suppressed',
+                'adjustments': [{
+                    'type': 'prevalence_suppress',
+                    'factor': 0.0,
+                    'reason': f'Very common in {industry} (≥85%) - suppressed'
+                }],
+                'industry': industry,
+                'category': category,
+                'prevalence': prevalence,
+                'action': 'suppress'
+            }
+
+        # COMMON (70-85%): Significant reduction
+        elif prevalence >= PrevalenceThresholds.SUPPRESS_ABOVE:
+            prevalence_factor = 0.3  # More aggressive: was 0.5
             modifier *= prevalence_factor
             adjustments.append({
                 'type': 'prevalence_high',
                 'factor': prevalence_factor,
-                'reason': f'Very common in {industry} (≥70%)'
+                'reason': f'Common in {industry} (≥70%)'
             })
             reasoning_parts.append(
-                f"Common practice in {industry} (found in {prevalence:.0%} of baseline) - reduced severity"
+                f"Common practice in {industry} (found in {prevalence:.0%}) - significantly reduced"
             )
+            action = 'reduce'
+
+        # MODERATELY COMMON (50-70%): Moderate reduction
+        elif prevalence >= PrevalenceThresholds.REDUCE_ABOVE:
+            prevalence_factor = 0.6
+            modifier *= prevalence_factor
+            adjustments.append({
+                'type': 'prevalence_moderate',
+                'factor': prevalence_factor,
+                'reason': f'Moderately common in {industry} (50-70%)'
+            })
+            reasoning_parts.append(
+                f"Somewhat common in {industry} (found in {prevalence:.0%}) - reduced"
+            )
+            action = 'reduce'
+
+        # UNCOMMON (<30%): Increase severity
         elif prevalence < 0.30:
-            # Uncommon - increase severity
             prevalence_factor = 1.3
             modifier *= prevalence_factor
             adjustments.append({
@@ -393,8 +458,9 @@ class IndustryBaselineFilter:
                 'reason': f'Uncommon in {industry} (<30%)'
             })
             reasoning_parts.append(
-                f"Unusual for {industry} (found in only {prevalence:.0%} of baseline) - increased severity"
+                f"Unusual for {industry} (found in only {prevalence:.0%}) - increased severity"
             )
+            action = 'amplify'
 
         # Adjustment 2: Strict category check
         if category in industry_config['strict_categories']:
@@ -453,7 +519,8 @@ class IndustryBaselineFilter:
             'adjustments': adjustments,
             'industry': industry,
             'category': category,
-            'prevalence': prevalence
+            'prevalence': prevalence,
+            'action': action  # 'suppress', 'reduce', 'normal', 'amplify'
         }
 
     def check_required_clauses(

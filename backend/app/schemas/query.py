@@ -28,6 +28,7 @@ class QueryResponse(BaseModel):
     question: str
     answer: str
     citations: List[Citation] = []
+    confidence: Optional[float] = None  # Confidence score (0.0 - 1.0)
     sources: List[str] = []
     warnings: Optional[List[str]] = []
     related_anomalies: Optional[List[str]] = []

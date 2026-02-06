@@ -41,7 +41,24 @@ export const useUploadDocument = () => {
       return data;
     },
     onError: (error: any) => {
-      const message = error.response?.data?.detail || 'Failed to upload document';
+      const message = error?.message || error?.response?.data?.detail || 'Failed to upload document';
+      toast.error(message);
+    },
+  });
+};
+
+export const useUploadText = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ text, title }: { text: string; title?: string }) => api.uploadText(text, title),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
+      toast.success('Text uploaded and analyzed successfully!');
+      return data;
+    },
+    onError: (error: any) => {
+      const message = error?.message || error?.response?.data?.detail || 'Failed to analyze text';
       toast.error(message);
     },
   });
@@ -57,7 +74,7 @@ export const useDeleteDocument = () => {
       toast.success('Document deleted successfully');
     },
     onError: (error: any) => {
-      const message = error.response?.data?.detail || 'Failed to delete document';
+      const message = error?.message || error?.response?.data?.detail || 'Failed to delete document';
       toast.error(message);
     },
   });

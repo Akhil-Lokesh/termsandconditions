@@ -18,7 +18,7 @@ from collections import defaultdict
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.core.config import settings
-from app.services.openai_service import OpenAIService
+from app.services.embedding_service import EmbeddingService
 from app.services.pinecone_service import PineconeService
 
 
@@ -32,7 +32,7 @@ async def check_baseline_stats():
 
     # Initialize services
     print("Initializing services...")
-    openai_service = OpenAIService()
+    embedding_service = EmbeddingService()
     pinecone_service = PineconeService()
     await pinecone_service.initialize()
 
@@ -69,7 +69,7 @@ async def check_baseline_stats():
                 print("  cd backend")
                 print("  python scripts/index_baseline_corpus.py")
                 print()
-                await openai_service.close()
+                pass
                 await pinecone_service.close()
                 return
 
@@ -116,7 +116,7 @@ async def check_baseline_stats():
     for query_text in test_queries:
         try:
             # Generate embedding for query
-            query_embedding = await openai_service.create_embedding(query_text)
+            query_embedding = await embedding_service.create_embedding(query_text)
 
             # Query baseline namespace
             results = await pinecone_service.query(
