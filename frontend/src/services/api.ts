@@ -13,6 +13,8 @@ import type {
   AnomalyReport,
   Anomaly,
   APIError,
+  FeedbackPayload,
+  FeedbackResponse,
 } from '@/types';
 
 // Determine API URL based on environment
@@ -272,6 +274,18 @@ class APIClient {
     const response = await this.client.get<AnomalyReport>(`/anomalies/report/${documentId}`, {
       timeout: 120000, // 2 minutes for full analysis
     });
+    return response.data;
+  }
+
+  // Submit user feedback on a detected anomaly (Layer 5 — active learning)
+  async submitFeedback(
+    anomalyId: string,
+    payload: FeedbackPayload
+  ): Promise<FeedbackResponse> {
+    const response = await this.client.post<FeedbackResponse>(
+      `/anomalies/${anomalyId}/feedback`,
+      payload
+    );
     return response.data;
   }
 }

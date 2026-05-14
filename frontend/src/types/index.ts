@@ -192,3 +192,37 @@ export interface APIError {
     type: string;
   }>;
 }
+
+// Feedback Types (Layer 5 — active learning)
+export type FeedbackUserAction =
+  | 'helpful'
+  | 'dismiss'
+  | 'not_applicable'
+  | 'acted_on';
+
+export interface FeedbackPayload {
+  user_action: FeedbackUserAction;
+  feedback_text?: string;
+  confidence_at_detection: number;
+  // Optional suggested severity (sent in feedback_text when user reports wrong severity)
+  suggested_severity?: 'critical' | 'high' | 'medium' | 'low';
+}
+
+export interface FeedbackStats {
+  buffer_size: number;
+  buffer_capacity: number;
+  buffer_progress: number;
+  total_feedback_collected: number;
+  retrain_count: number;
+  last_retrain_date?: string | null;
+  dismissal_rate: number;
+  accuracy: number;
+  dismissal_threshold: number;
+  calibrator_fitted: boolean;
+}
+
+export interface FeedbackResponse {
+  success: boolean;
+  message: string;
+  feedback_stats: FeedbackStats;
+}

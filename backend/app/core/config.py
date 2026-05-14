@@ -5,6 +5,7 @@ Configuration settings for the T&C Analysis System.
 Uses Pydantic Settings to load and validate environment variables.
 """
 
+import os
 from typing import List
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -76,6 +77,15 @@ class Settings(BaseSettings):
 
     # Rate Limiting
     RATE_LIMIT_PER_HOUR: int = 100
+
+    # LLM Cost Controls (Layer 5.2)
+    # Hard per-document spend cap. The LLMClauseDetector tracks running USD cost
+    # across batch calls + self-consistency votes; further calls are skipped
+    # once `cost_tracker_usd + projected_cost` exceeds this cap.
+    MAX_LLM_USD_PER_DOC: float = float(os.getenv("MAX_LLM_USD_PER_DOC", "0.50"))
+    # Soft warning threshold (fraction of the hard cap). Logged at WARNING so
+    # monitoring picks it up before requests start getting silently dropped.
+    COST_WARN_THRESHOLD: float = 0.80
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", case_sensitive=True, extra="ignore"

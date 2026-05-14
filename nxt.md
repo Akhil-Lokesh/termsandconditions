@@ -132,7 +132,7 @@ app/prompts/system_prompts.py              ( 27 LOC)
 | 5.2 | Per-doc cost cap (`MAX_LLM_USD_PER_DOC`) | `app/core/config.py`, `app/core/llm_clause_detector.py` | 60 |
 | 5.3 | Vote-on/off ablation report | `evals/experiments/vote_ablation.py` | 80 |
 | 5.4 | Frontend feedback UI completion | `frontend/src/components/anomaly/FeedbackButtons.tsx` | 80 |
-| 5.5 | Runbook | `evals/RUNBOOK.md` | — |
+| 5.5 | Runbook | [`backend/evals/RUNBOOK.md`](backend/evals/RUNBOOK.md) | — |
 
 Default `SELF_CONSISTENCY_CRITICAL=false`; flip after ablation shows kappa lift >0.02.
 
@@ -140,7 +140,7 @@ Default `SELF_CONSISTENCY_CRITICAL=false`; flip after ablation shows kappa lift 
 - Vote shipped behind flag with ablation evidence
 - Cost guard caps per-doc spend with 80% alerting
 - Frontend "agree / disagree / wrong severity" wired through to `/feedback`
-- Runbook published
+- Runbook published — see [`backend/evals/RUNBOOK.md`](backend/evals/RUNBOOK.md)
 
 ---
 

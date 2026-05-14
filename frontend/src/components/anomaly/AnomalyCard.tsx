@@ -1,5 +1,6 @@
 import { Anomaly } from '@/types';
 import { SeverityBadge } from './SeverityBadge';
+import { FeedbackButtons } from './FeedbackButtons';
 import { FileText, Tag, TrendingUp, Quote, Lightbulb, AlertCircle } from 'lucide-react';
 import { formatPercentage } from '@/utils/formatters';
 
@@ -139,6 +140,12 @@ export const AnomalyCard = ({ anomaly }: AnomalyCardProps) => {
             </span>
           </div>
         </div>
+
+        {/* Feedback Buttons (Layer 5 — active learning) */}
+        <FeedbackButtons
+          anomalyId={anomaly.id}
+          currentSeverity={anomaly.severity}
+        />
       </div>
     </div>
   );
