@@ -40,18 +40,15 @@ from app.core.active_learning_manager import ActiveLearningManager  # Stage 5: A
 from app.core.alert_ranker import AlertRanker  # Stage 6: Alert Ranking & Budget
 from app.core.context_aware_layer import ContextAwareLayer  # NEW: Context-Aware Layer
 from app.core.competitive_analyzer import CompetitiveAnalyzer  # NEW: Competitive Benchmarking
-from app.core.inverted_funnel import InvertedFunnelDetector, DetectedAnomaly  # NEW: Inverted Funnel System
 from app.core.rag_anomaly_detector import RAGAnomalyDetector  # NEW: RAG-based detection
 from app.core.constants import (
     ThreatLevel,
-    CommonnessLevel,
     DisplayCategory,
     PATTERN_THREAT_LEVELS,
     CommonnessThresholds,
     get_display_category,
     get_threat_level_from_score,
     CATEGORY_PREVALENCE_ESTIMATES,
-    INDUSTRY_PREVALENCE_MODIFIERS,
 )
 from app.utils.logger import setup_logger
 
@@ -191,19 +188,6 @@ class AnomalyDetector:
         except Exception as e:
             logger.warning(f"Failed to initialize context-aware layer: {e}")
             self.context_aware_layer = None
-
-        # NEW: Inverted Funnel Detector (4-layer system for better UX)
-        try:
-            self.inverted_funnel = InvertedFunnelDetector(
-                risk_indicators=self.risk_indicators,
-                semantic_detector=self.semantic_anomaly_detector,
-                statistical_detector=self.statistical_detector,
-                prevalence_calculator=self.prevalence_calc,
-            )
-            logger.info("Inverted funnel detector initialized")
-        except Exception as e:
-            logger.warning(f"Failed to initialize inverted funnel detector: {e}")
-            self.inverted_funnel = None
 
         # NEW: RAG-based Anomaly Detector (true retrieval-augmented detection)
         # Uses baseline corpus comparison for accurate prevalence calculation
@@ -1065,8 +1049,6 @@ class AnomalyDetector:
 
                 # Add compound risks to each related anomaly for context
                 for compound_risk in compound_risks:
-                    # Get component indicators for this pattern
-                    required_components = set(compound_risk.get("required_components", []))
                     matched_required = set(compound_risk.get("matched_required", []))
                     matched_optional = set(compound_risk.get("matched_optional", []))
                     all_matched = matched_required.union(matched_optional)
@@ -1138,48 +1120,6 @@ class AnomalyDetector:
                 'stage4_complete': False,
                 'error': str(e)
             }
-
-    def load_calibrator(self, training_data_path: Optional[str] = None) -> None:
-        """
-        Load and fit confidence calibrator with historical feedback data.
-
-        This should be called during initialization or periodically to update
-        the calibrator with accumulated user feedback.
-
-        Args:
-            training_data_path: Optional path to training data file
-                              If None, loads from database
-        """
-        logger.info("Loading calibrator with historical feedback data")
-
-        if not self.confidence_calibrator:
-            logger.error("Confidence calibrator not initialized")
-            return
-
-        try:
-            # Calibrator trains from feedback data; uses raw scores until feedback is collected
-            if training_data_path is None:
-                logger.info(
-                    "No training data path provided. Calibrator will use raw scores "
-                    "until feedback is collected."
-                )
-                return
-
-            # Load training data (predictions and labels)
-            # This would be implemented based on your database schema
-            logger.info(f"Loading training data from {training_data_path}")
-
-            # Placeholder for actual implementation
-            import numpy as np
-            # predicted_probs = np.load(f"{training_data_path}/predictions.npy")
-            # actual_labels = np.load(f"{training_data_path}/labels.npy")
-
-            # self.confidence_calibrator.fit(predicted_probs, actual_labels)
-
-            logger.info("Calibrator loaded successfully")
-
-        except Exception as e:
-            logger.error(f"Failed to load calibrator: {e}", exc_info=True)
 
     def run_stage5(
         self,
