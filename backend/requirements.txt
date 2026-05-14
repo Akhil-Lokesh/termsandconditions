@@ -68,3 +68,8 @@ torch==2.6.0
 
 # Anthropic Claude API
 anthropic==0.43.0
+
+# Eval datasets (Layer 3) — only needed when running ingesters/evals
+datasets>=2.14.0
+requests>=2.31.0
+
