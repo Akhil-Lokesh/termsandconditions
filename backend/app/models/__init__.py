@@ -5,5 +5,6 @@ from app.models.document import Document
 from app.models.clause import Clause
 from app.models.anomaly import Anomaly
 from app.models.analysis_log import AnalysisLog
+from app.models.feedback_event import FeedbackEvent
 
-__all__ = ["User", "Document", "Clause", "Anomaly", "AnalysisLog"]
+__all__ = ["User", "Document", "Clause", "Anomaly", "AnalysisLog", "FeedbackEvent"]

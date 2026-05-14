@@ -41,6 +41,11 @@ class ExtractionResult:
     text: str
     page_count: int
     extraction_method: str
+    # Detected document type from DocumentTypeDetector (terms_of_service,
+    # privacy_policy, eula, cookie_policy, other). Defaults to terms_of_service
+    # when the extraction path doesn't run the detector (e.g., process_text).
+    detected_document_type: str = "terms_of_service"
+    detected_document_type_confidence: float = 0.0
 
 
 @dataclass
@@ -133,6 +138,13 @@ class DocumentProcessingPipeline:
         # Step 5: Extract metadata
         metadata = await self._extract_metadata(extraction.text)
 
+        # Step 5b: Merge DocumentTypeDetector results into metadata.
+        # Use distinct keys ('detected_document_type', 'detected_document_type_confidence')
+        # to avoid clobbering MetadataExtractor's 'document_type' which holds the
+        # human-readable display name (e.g. "Terms of Service").
+        metadata["detected_document_type"] = extraction.detected_document_type
+        metadata["detected_document_type_confidence"] = extraction.detected_document_type_confidence
+
         # Step 6: Store vectors
         await self._store_vectors(chunks, doc_id)
 
@@ -182,6 +194,22 @@ class DocumentProcessingPipeline:
                 f"Text too short ({len(text.strip())} chars). Please provide at least {self.MIN_TEXT_LENGTH} characters."
             )
 
+        # Step 0: Detect document type directly on raw text (no PDF available).
+        try:
+            type_result = self.document_processor.type_detector.detect_type(
+                text, title=filename
+            )
+            detected_doc_type = type_result.document_type
+            detected_doc_type_conf = float(type_result.confidence or 0.0)
+            logger.info(
+                f"Detected document type (text upload): {detected_doc_type} "
+                f"(conf={detected_doc_type_conf:.2f})"
+            )
+        except Exception as e:
+            logger.warning(f"Document type detection failed on text upload: {e}")
+            detected_doc_type = "terms_of_service"
+            detected_doc_type_conf = 0.0
+
         # Step 1: Parse structure (skip PDF extraction)
         structure = await self._parse_structure(text)
 
@@ -193,6 +221,10 @@ class DocumentProcessingPipeline:
 
         # Step 4: Extract metadata
         metadata = await self._extract_metadata(text)
+
+        # Step 4b: Merge DocumentTypeDetector results into metadata (see process_document).
+        metadata["detected_document_type"] = detected_doc_type
+        metadata["detected_document_type_confidence"] = detected_doc_type_conf
 
         # Step 5: Store vectors
         await self._store_vectors(chunks, doc_id)
@@ -238,10 +270,13 @@ class DocumentProcessingPipeline:
         text = extracted["text"]
         page_count = extracted["page_count"]
         extraction_method = extracted["extraction_method"]
+        detected_doc_type = extracted.get("document_type", "terms_of_service")
+        detected_doc_type_conf = float(extracted.get("document_type_confidence", 0.0) or 0.0)
 
         logger.info(
             f"Text extracted: {len(text)} chars, {page_count} pages, "
-            f"method={extraction_method}"
+            f"method={extraction_method}, detected_type={detected_doc_type} "
+            f"(conf={detected_doc_type_conf:.2f})"
         )
 
         if len(text) < self.MIN_TEXT_LENGTH:
@@ -253,6 +288,8 @@ class DocumentProcessingPipeline:
             text=text,
             page_count=page_count,
             extraction_method=extraction_method,
+            detected_document_type=detected_doc_type,
+            detected_document_type_confidence=detected_doc_type_conf,
         )
 
     async def _parse_structure(self, text: str) -> StructureResult:

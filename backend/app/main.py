@@ -87,6 +87,24 @@ async def lifespan(app: FastAPI):
         init_failures.append(f"Embedding: {e}")
         app.state.embedding = None
 
+    # Hydrate active learning buffer from DB (feature-flagged via
+    # ACTIVE_LEARNING_PERSIST). The ALM is owned by AnomalyDetector instances,
+    # so actual hydration runs lazily inside AnomalyDetector.__init__ when the
+    # detector is first constructed. This log line documents the pathway.
+    try:
+        from app.core.active_learning_manager import _persist_enabled
+        if _persist_enabled():
+            logger.info(
+                "Active learning persistence enabled — hydration deferred to "
+                "first AnomalyDetector instance"
+            )
+        else:
+            logger.info(
+                "Active learning persistence disabled (ACTIVE_LEARNING_PERSIST!=true)"
+            )
+    except Exception as e:
+        logger.warning(f"Active learning hydration check skipped: {e}")
+
     # FAIL FAST if required services failed
     if init_failures:
         error_msg = "Critical services failed to initialize:\n" + "\n".join(

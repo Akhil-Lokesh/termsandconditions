@@ -195,6 +195,17 @@ async def run_anomaly_detection_background(
         company_name = metadata.get("company", "Unknown")
         service_type = _infer_service_type(metadata)
 
+        # Build document_context for AnomalyDetector. Forward the
+        # DocumentTypeDetector result (internal IDs: terms_of_service,
+        # privacy_policy, eula, cookie_policy, other) so the LLM detector
+        # can select the right prompt variant.
+        document_context: dict = {
+            "document_type": metadata.get("detected_document_type", "terms_of_service"),
+            "document_type_confidence": metadata.get(
+                "detected_document_type_confidence", 0.0
+            ),
+        }
+
         # Detect anomalies - returns comprehensive report dict
         detector = AnomalyDetector(
             embedding_service=embedding_service,
@@ -206,6 +217,7 @@ async def run_anomaly_detection_background(
             sections=sections,
             company_name=company_name,
             service_type=service_type,
+            document_context=document_context,
         )
 
         # Extract anomalies from the detection result

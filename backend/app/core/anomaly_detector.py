@@ -14,6 +14,7 @@ Multi-Stage Detection Pipeline:
 - Stage 6: Alert Ranking & Budget (MAX_ALERTS=10, prevents alert fatigue)
 """
 
+import os
 import time
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
@@ -64,7 +65,7 @@ class AnomalyDetector:
         pinecone_service: Optional[PineconeService] = None,
         db: Optional[Session] = None,
         claude_service: Optional[ClaudeService] = None,
-        enable_statistical_detection: bool = True,
+        enable_statistical_detection: bool = False,
         enable_semantic_detection: bool = True,
     ):
         """
@@ -75,7 +76,11 @@ class AnomalyDetector:
             pinecone_service: Optional Pinecone service instance
             db: Optional database session
             claude_service: Optional Claude service instance
-            enable_statistical_detection: Enable Stage 1 statistical detection
+            enable_statistical_detection: Enable Stage 1 statistical detection.
+                DEFAULT FALSE — StatisticalOutlierDetector requires .fit() on a
+                baseline corpus, which is not currently wired up. Leaving it on
+                produces a silent no-op (predict() raises and returns fallback).
+                Set True only when corpus fitting is implemented.
             enable_semantic_detection: Enable Stage 1 semantic detection
         """
         self.embedding = embedding_service or EmbeddingService()
@@ -107,6 +112,10 @@ class AnomalyDetector:
                 self.statistical_detector = None
         else:
             self.statistical_detector = None
+            logger.info(
+                "Statistical outlier detector disabled by default — "
+                "requires corpus fit() (not implemented)"
+            )
 
         # Initialize Semantic Anomaly Detector (Stage 1)
         if self.enable_semantic:
@@ -165,7 +174,26 @@ class AnomalyDetector:
         # NEW: Stage 5 Confidence Calibration & Active Learning
         try:
             self.confidence_calibrator = ConfidenceCalibrator()
-            self.active_learning = ActiveLearningManager(self.confidence_calibrator)
+            # Pass SessionLocal so ActiveLearningManager can write-through feedback
+            # to feedback_events table (feature-flagged via ACTIVE_LEARNING_PERSIST).
+            # Lazy import to avoid circular imports through app.db.base.
+            try:
+                from app.db.session import SessionLocal as _SessionLocal
+                _alm_session_factory = _SessionLocal
+            except Exception as _e:
+                logger.warning(f"Could not import SessionLocal for ALM persistence: {_e}")
+                _alm_session_factory = None
+            self.active_learning = ActiveLearningManager(
+                self.confidence_calibrator,
+                db_session_factory=_alm_session_factory,
+            )
+            # Hydrate unprocessed feedback rows into the buffer once at detector
+            # construction. No-op when ACTIVE_LEARNING_PERSIST is off or DB
+            # unreachable; failures don't block detector init.
+            try:
+                self.active_learning.hydrate_from_db()
+            except Exception as _e:
+                logger.warning(f"ALM hydrate_from_db failed: {_e}")
             logger.info("Confidence calibrator and active learning manager initialized")
         except Exception as e:
             logger.warning(f"Failed to initialize Stage 5 components: {e}")
@@ -1597,6 +1625,50 @@ class AnomalyDetector:
         document_text_parts = []  # Collect full document text for context detection
 
         # =====================================================================
+        # Document-type detection — gated by DOC_TYPE_DETECTION feature flag
+        # (default ON). When enabled and confidence >= 0.7, route the detected
+        # document_type to the LLM detector so it can pick the right prompt
+        # variant (privacy-policy framing vs. T&C framing). Below that, we
+        # fall back to 'terms_of_service' to avoid mis-framing on low signal.
+        # =====================================================================
+        DOC_TYPE_CONF_THRESHOLD = 0.7
+        doc_type_flag_on = os.getenv("DOC_TYPE_DETECTION", "true").lower() == "true"
+
+        raw_doc_type = (
+            document_context.get("document_type", "terms_of_service")
+            if document_context
+            else "terms_of_service"
+        )
+        raw_doc_type_conf = (
+            document_context.get("document_type_confidence", 0.0)
+            if document_context
+            else 0.0
+        )
+        try:
+            raw_doc_type_conf = float(raw_doc_type_conf or 0.0)
+        except (TypeError, ValueError):
+            raw_doc_type_conf = 0.0
+
+        if not doc_type_flag_on:
+            llm_document_type = "terms_of_service"
+            logger.info(
+                "DOC_TYPE_DETECTION flag disabled — using terms_of_service for LLM prompt"
+            )
+        elif raw_doc_type_conf >= DOC_TYPE_CONF_THRESHOLD and raw_doc_type:
+            llm_document_type = raw_doc_type
+            logger.info(
+                f"Document type for LLM detection: {llm_document_type} "
+                f"(confidence={raw_doc_type_conf:.2f} >= {DOC_TYPE_CONF_THRESHOLD})"
+            )
+        else:
+            llm_document_type = "terms_of_service"
+            logger.info(
+                f"Document type confidence too low (detected={raw_doc_type!r}, "
+                f"confidence={raw_doc_type_conf:.2f} < {DOC_TYPE_CONF_THRESHOLD}) — "
+                f"falling back to terms_of_service for LLM prompt"
+            )
+
+        # =====================================================================
         # LLM BATCH DETECTION: Send ALL clauses to Claude in 1-2 API calls
         # This catches risky clauses that keyword patterns miss entirely
         # =====================================================================
@@ -1629,6 +1701,7 @@ class AnomalyDetector:
                 clauses=all_clause_list,
                 company_name=company_name,
                 service_type=service_type,
+                document_type=llm_document_type,
             )
 
             # Index by clause_number for O(1) lookup

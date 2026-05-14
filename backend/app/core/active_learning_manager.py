@@ -6,15 +6,61 @@ calibrator to improve accuracy over time. Implements uncertainty sampling
 for targeted feedback collection.
 
 Stage 5 of the anomaly detection pipeline: Active Learning & Feedback Loop
+
+Persistence:
+    When the ACTIVE_LEARNING_PERSIST env var is set to "true" and a
+    ``db_session_factory`` is passed to ``__init__``, each call to
+    ``collect_feedback`` write-throughs to the ``feedback_events`` table
+    BEFORE appending to the in-memory buffer. At startup, ``hydrate_from_db``
+    pulls unprocessed rows back into the buffer. This guarantees feedback
+    survives server restarts.
 """
 
-from typing import List, Dict, Any, Optional
+import os
+from typing import List, Dict, Any, Optional, Callable
 from datetime import datetime, timezone
 import numpy as np
+from sqlalchemy.orm import Session
 from app.core.confidence_calibrator import ConfidenceCalibrator
 from app.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
+
+
+def _persist_enabled() -> bool:
+    """Return True iff feedback persistence is feature-flag enabled."""
+    return os.getenv('ACTIVE_LEARNING_PERSIST', 'false').lower() == 'true'
+
+
+# Maps internal action names (used by the in-memory buffer and ConfidenceCalibrator)
+# to the persisted-vocabulary action names stored in feedback_events.user_action.
+_INTERNAL_TO_PERSISTED_ACTION = {
+    'helpful': 'agree',
+    'acted_on': 'agree',
+    'dismissed': 'dismiss',
+    'false_positive': 'disagree',
+}
+
+# Inverse: rows loaded from DB must be re-projected back to an internal action so
+# the in-memory `was_correct` semantics stay consistent. "dismiss" / "disagree" /
+# "wrong_severity" / "wrong_category" all imply the prediction was unhelpful.
+_PERSISTED_TO_INTERNAL_ACTION = {
+    'agree': 'helpful',
+    'disagree': 'false_positive',
+    'dismiss': 'dismissed',
+    'wrong_severity': 'dismissed',
+    'wrong_category': 'dismissed',
+}
+
+
+def _map_action_to_persisted(internal_action: str) -> str:
+    """Translate internal action to persisted-vocabulary action, with passthrough."""
+    return _INTERNAL_TO_PERSISTED_ACTION.get(internal_action, internal_action)
+
+
+def _map_action_to_internal(persisted_action: str) -> str:
+    """Translate persisted action back to internal action, with passthrough."""
+    return _PERSISTED_TO_INTERNAL_ACTION.get(persisted_action, persisted_action)
 
 
 class ActiveLearningManager:
@@ -35,15 +81,26 @@ class ActiveLearningManager:
         retrain_count: Number of times calibrator has been retrained
     """
 
-    def __init__(self, calibrator: ConfidenceCalibrator):
+    def __init__(
+        self,
+        calibrator: ConfidenceCalibrator,
+        db_session_factory: Optional[Callable[[], Session]] = None,
+    ):
         """
         Initialize active learning manager.
 
         Args:
             calibrator: ConfidenceCalibrator instance to manage and retrain
+            db_session_factory: Optional callable returning a context-manager
+                SQLAlchemy Session (e.g. ``SessionLocal``). When provided AND
+                ``ACTIVE_LEARNING_PERSIST=true``, ``collect_feedback`` writes
+                each event to the ``feedback_events`` table before buffering
+                it in memory; ``hydrate_from_db`` reloads unprocessed rows
+                into the buffer at startup.
         """
         self.calibrator = calibrator
         self.feedback_buffer: List[Dict[str, Any]] = []
+        self._db_session_factory = db_session_factory
 
         # Configuration
         self.dismissal_threshold = 0.20  # Alert if >20% dismissals
@@ -54,28 +111,42 @@ class ActiveLearningManager:
         self.total_feedback_collected = 0
         self.retrain_count = 0
 
+        persist_flag = _persist_enabled()
         logger.info(
             f"Active learning manager initialized "
             f"(retrain_after={self.retrain_after_samples}, "
-            f"dismissal_threshold={self.dismissal_threshold:.0%})"
+            f"dismissal_threshold={self.dismissal_threshold:.0%}, "
+            f"persist={persist_flag and self._db_session_factory is not None})"
         )
 
     def collect_feedback(
         self,
         anomaly_id: str,
         user_action: str,
-        confidence_at_detection: float
+        confidence_at_detection: float,
+        user_id: Optional[str] = None,
+        document_id: Optional[str] = None,
+        original_severity: Optional[str] = None,
+        suggested_severity: Optional[str] = None,
     ) -> None:
         """
         Collect user feedback on an anomaly detection.
 
         Stores feedback in buffer and triggers retraining when sufficient
-        samples are collected.
+        samples are collected. When DB persistence is enabled (via the
+        ``ACTIVE_LEARNING_PERSIST`` env var AND a ``db_session_factory`` was
+        passed to ``__init__``), the event is also written to the
+        ``feedback_events`` table.
 
         Args:
             anomaly_id: Unique identifier for the anomaly
             user_action: User action - 'helpful', 'acted_on', 'dismissed', 'false_positive'
             confidence_at_detection: Confidence score when anomaly was shown
+            user_id: Optional ID of the user submitting the feedback. Required
+                for DB persistence (skipped if missing — in-memory still works).
+            document_id: Optional ID of the document the anomaly belongs to.
+            original_severity: Optional severity that was originally shown.
+            suggested_severity: Optional severity the user is suggesting.
 
         Valid user actions:
             - 'helpful': User found the anomaly helpful
@@ -110,6 +181,49 @@ class ActiveLearningManager:
             'timestamp': datetime.now(timezone.utc)
         }
 
+        # Write-through to DB BEFORE in-memory append so a crash between the
+        # two doesn't lose the event. Feature-flagged via ACTIVE_LEARNING_PERSIST.
+        # We need a user_id (FK NOT NULL) to persist; skip the DB write if
+        # missing and log so callers can wire it up. On DB failure we log and
+        # continue — never silently drop the event.
+        if (
+            self._db_session_factory is not None
+            and _persist_enabled()
+            and user_id is not None
+        ):
+            try:
+                # Lazy import to avoid a circular import via app.db.base / models
+                from app.models.feedback_event import FeedbackEvent
+                with self._db_session_factory() as db:
+                    db.add(FeedbackEvent(
+                        user_id=user_id,
+                        anomaly_id=anomaly_id,
+                        document_id=document_id,
+                        # Internal action names map to the persisted vocabulary
+                        # ("dismissed" -> "dismiss", "false_positive" -> "disagree",
+                        # "helpful"/"acted_on" -> "agree"). The DB column is
+                        # capped at 20 chars; we keep the persisted value short.
+                        user_action=_map_action_to_persisted(user_action),
+                        original_severity=original_severity,
+                        suggested_severity=suggested_severity,
+                        confidence_score=confidence_at_detection,
+                    ))
+                    db.commit()
+            except Exception as e:
+                logger.error(
+                    f"Failed to persist feedback to DB: {e}", exc_info=True
+                )
+                # Continue with in-memory append — don't lose the event
+        elif (
+            self._db_session_factory is not None
+            and _persist_enabled()
+            and user_id is None
+        ):
+            logger.debug(
+                "Skipping DB persist: user_id not provided to collect_feedback "
+                "(in-memory buffer still updated)"
+            )
+
         # Add to buffer
         self.feedback_buffer.append(feedback)
         self.total_feedback_collected += 1
@@ -127,6 +241,84 @@ class ActiveLearningManager:
                 f"triggering retraining..."
             )
             self._retrain_calibrator()
+
+    def hydrate_from_db(self, max_rows: int = 1000) -> int:
+        """
+        Reload unprocessed feedback events from the DB into the in-memory buffer.
+
+        Intended to run once at app startup (or first AnomalyDetector use) so
+        feedback collected before a restart isn't lost. Each loaded row is
+        stamped with ``processed_at = now()`` and committed so subsequent
+        restarts skip it.
+
+        Feature-flagged via ``ACTIVE_LEARNING_PERSIST``. Returns 0 silently if
+        disabled or no session factory was supplied.
+
+        Args:
+            max_rows: Maximum rows to load on this call (caps OOM risk on
+                first hydrate of a large backlog). Defaults to 1000.
+
+        Returns:
+            Number of rows hydrated into the buffer.
+        """
+        if not _persist_enabled():
+            logger.debug(
+                "hydrate_from_db: skipped (ACTIVE_LEARNING_PERSIST not enabled)"
+            )
+            return 0
+        if self._db_session_factory is None:
+            logger.debug(
+                "hydrate_from_db: skipped (no db_session_factory provided)"
+            )
+            return 0
+
+        try:
+            # Lazy import to avoid circular imports during module load
+            from app.models.feedback_event import FeedbackEvent
+        except Exception as e:
+            logger.error(f"hydrate_from_db: model import failed: {e}")
+            return 0
+
+        hydrated = 0
+        try:
+            with self._db_session_factory() as db:
+                rows = (
+                    db.query(FeedbackEvent)
+                    .filter(FeedbackEvent.processed_at.is_(None))
+                    .order_by(FeedbackEvent.created_at.desc())
+                    .limit(max_rows)
+                    .all()
+                )
+
+                now = datetime.now(timezone.utc)
+                for row in rows:
+                    internal_action = _map_action_to_internal(row.user_action)
+                    was_correct = internal_action in ['helpful', 'acted_on']
+                    confidence = row.confidence_score if row.confidence_score is not None else 0.5
+
+                    self.feedback_buffer.append({
+                        'anomaly_id': row.anomaly_id,
+                        'user_action': internal_action,
+                        'confidence': confidence,
+                        'was_correct': was_correct,
+                        'timestamp': row.created_at or now,
+                    })
+                    row.processed_at = now
+                    hydrated += 1
+                    self.total_feedback_collected += 1
+
+                if hydrated:
+                    db.commit()
+
+            logger.info(
+                f"Active learning hydrated {hydrated} feedback events from DB "
+                f"(buffer_size now {len(self.feedback_buffer)}/"
+                f"{self.retrain_after_samples})"
+            )
+        except Exception as e:
+            logger.error(f"hydrate_from_db failed: {e}", exc_info=True)
+
+        return hydrated
 
     def _retrain_calibrator(self) -> None:
         """
