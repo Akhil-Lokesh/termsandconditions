@@ -129,3 +129,10 @@ backend/app/core/.cache/
 backend/evals/datasets/_raw/
 backend/evals/datasets/*.jsonl
 
+# Eval judge SQLite verdict cache + disagreement log (Layer 4) — generated at runtime,
+# not committed. The cache is keyed by clause+prediction+judge_model hash so it's safe
+# to delete and rebuild any time.
+backend/evals/judge/cache.db
+backend/evals/judge/*.db
+backend/evals/judge/judge_disagreements.jsonl
+

@@ -73,3 +73,7 @@ anthropic==0.43.0
 datasets>=2.14.0
 requests>=2.31.0
 
+# Eval judge (Layer 4) — cross-family LLM-as-judge checker (OpenAI GPT-4o)
+# Only imported when OpenAIJudge is instantiated; ImportError handled gracefully.
+openai>=1.0.0
+

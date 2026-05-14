@@ -15,6 +15,13 @@ Each `prediction` and `label` dict is expected to expose:
 A prediction with severity == None or missing means "not flagged by the
 detector". For severity P/R/F1 we treat that as the prediction belonging to
 no severity class (i.e. it cannot count as a TP for any class).
+
+Layer-4 note
+------------
+This module used to live at ``backend/evals/metrics.py``. Layer 4 turned
+``evals.metrics`` into a package (to host ``kappa.py``); the package
+``__init__`` re-exports every public symbol from here so all existing
+``from evals import metrics`` callers keep working unchanged.
 """
 
 from __future__ import annotations
