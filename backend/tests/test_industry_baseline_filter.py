@@ -17,7 +17,7 @@ class TestIndustryBaselineFilter:
     def filter(self):
         """Create a filter instance with mocked Pinecone."""
         mock_pinecone = Mock()
-        return IndustryBaselineFilter(pinecone_index=mock_pinecone)
+        return IndustryBaselineFilter(pinecone_service=mock_pinecone)
 
     @pytest.fixture
     def sample_embedding(self):
@@ -26,7 +26,7 @@ class TestIndustryBaselineFilter:
 
     def test_initialization(self, filter):
         """Test filter initialization."""
-        assert filter.pinecone_index is not None
+        assert filter.pinecone is not None
         assert len(filter.INDUSTRY_MODIFIERS) == 9
         assert 'children_apps' in filter.INDUSTRY_MODIFIERS
         assert 'streaming' in filter.INDUSTRY_MODIFIERS
@@ -107,7 +107,7 @@ class TestIndustryBaselineFilter:
             for j in range(1, 4)   # 3 clauses each
         ]
 
-        filter.pinecone_index.query = AsyncMock(return_value=Mock(matches=mock_matches))
+        filter.pinecone.query = AsyncMock(return_value=Mock(matches=mock_matches))
 
         result = await filter.calculate_prevalence(
             clause_embedding=sample_embedding,
@@ -134,7 +134,7 @@ class TestIndustryBaselineFilter:
             for i in range(1, 3)  # Only 2 documents
         ]
 
-        filter.pinecone_index.query = AsyncMock(return_value=Mock(matches=mock_matches))
+        filter.pinecone.query = AsyncMock(return_value=Mock(matches=mock_matches))
 
         result = await filter.calculate_prevalence(
             clause_embedding=sample_embedding,
@@ -156,7 +156,7 @@ class TestIndustryBaselineFilter:
             Mock(id="doc2_clause1", score=0.60, metadata={'document_id': 'doc2'})   # Below 0.85
         ]
 
-        filter.pinecone_index.query = AsyncMock(return_value=Mock(matches=mock_matches))
+        filter.pinecone.query = AsyncMock(return_value=Mock(matches=mock_matches))
 
         result = await filter.calculate_prevalence(
             clause_embedding=sample_embedding,
@@ -173,7 +173,7 @@ class TestIndustryBaselineFilter:
     async def test_calculate_prevalence_error_handling(self, filter, sample_embedding):
         """Test prevalence calculation error handling."""
         # Mock Pinecone query to raise exception
-        filter.pinecone_index.query = AsyncMock(side_effect=Exception("Pinecone error"))
+        filter.pinecone.query = AsyncMock(side_effect=Exception("Pinecone error"))
 
         result = await filter.calculate_prevalence(
             clause_embedding=sample_embedding,
@@ -350,7 +350,7 @@ class TestIndustryBaselineFilter:
             Mock(id="doc2_clause2", score=0.89, metadata={'document_id': 'doc2'}),
         ]
 
-        filter.pinecone_index.query = AsyncMock(return_value=Mock(matches=mock_matches))
+        filter.pinecone.query = AsyncMock(return_value=Mock(matches=mock_matches))
 
         result = await filter.calculate_prevalence(
             clause_embedding=sample_embedding,
@@ -410,7 +410,7 @@ class TestIndustryBaselineFilter:
     async def test_calculate_prevalence_filter_parameters(self, filter, sample_embedding):
         """Test that prevalence calculation uses correct filter parameters."""
         mock_query = AsyncMock(return_value=Mock(matches=[]))
-        filter.pinecone_index.query = mock_query
+        filter.pinecone.query = mock_query
 
         await filter.calculate_prevalence(
             clause_embedding=sample_embedding,

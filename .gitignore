@@ -112,3 +112,15 @@ dump.rdb
 *_backup.py
 *_original.py
 *_improved.py
+
+# Claude Code
+.claude/
+
+# Generated analysis files
+CODEBASE_ANALYSIS.md
+COMPREHENSIVE_SYSTEM_ANALYSIS.md
+DETECTION_FAILURE_ROOT_CAUSE.md
+refactoring-patterns/
+
+# Detection cache
+backend/app/core/.cache/

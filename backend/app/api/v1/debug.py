@@ -82,7 +82,7 @@ async def get_detection_status(
 
 @router.get("/test-clause")
 async def test_clause_detection(
-    clause_text: str = Query(..., description="Clause text to test"),
+    clause_text: str = Query(..., max_length=5000, description="Clause text to test"),
     current_user: User = Depends(get_current_active_user),
     embedding_service: EmbeddingService = Depends(get_embedding_service),
     pinecone_service: PineconeService = Depends(get_pinecone_service),
@@ -120,7 +120,7 @@ async def test_clause_detection(
 @router.get("/test-document/{document_id}")
 async def test_document_detection(
     document_id: str,
-    max_clauses: int = Query(5, description="Max clauses to test"),
+    max_clauses: int = Query(5, ge=1, le=50, description="Max clauses to test"),
     current_user: User = Depends(get_current_active_user),
     embedding_service: EmbeddingService = Depends(get_embedding_service),
     pinecone_service: PineconeService = Depends(get_pinecone_service),
@@ -186,7 +186,7 @@ async def test_document_detection(
 
 @router.get("/test-patterns")
 async def test_pattern_detection(
-    clause_text: str = Query(..., description="Clause text to test"),
+    clause_text: str = Query(..., max_length=5000, description="Clause text to test"),
     current_user: User = Depends(get_current_active_user),
 ):
     """
@@ -211,7 +211,7 @@ async def test_pattern_detection(
 
 @router.get("/test-semantic")
 async def test_semantic_detection(
-    clause_text: str = Query(..., description="Clause text to test"),
+    clause_text: str = Query(..., max_length=5000, description="Clause text to test"),
     current_user: User = Depends(get_current_active_user),
 ):
     """

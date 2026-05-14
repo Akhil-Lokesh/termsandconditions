@@ -13,7 +13,7 @@ Uses Claude to extract structured metadata from Terms & Conditions documents:
 
 import logging
 from typing import Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.services.claude_service import ClaudeService
 from app.prompts.metadata_prompts import (
@@ -182,7 +182,7 @@ class MetadataExtractor:
                 cleaned[date_field] = None
 
         # Add extraction timestamp
-        cleaned["extracted_at"] = datetime.utcnow().isoformat()
+        cleaned["extracted_at"] = datetime.now(timezone.utc).isoformat()
 
         return cleaned
 
@@ -203,7 +203,7 @@ class MetadataExtractor:
             "version": None,
             "contact_email": None,
             "website": None,
-            "extracted_at": datetime.utcnow().isoformat(),
+            "extracted_at": datetime.now(timezone.utc).isoformat(),
             "extraction_failed": True,
         }
 

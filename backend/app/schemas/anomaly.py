@@ -192,19 +192,6 @@ class AnomalyListResponse(BaseModel):
     low_risk_count: int
 
 
-class AnomalyStatsResponse(BaseModel):
-    """Schema for anomaly statistics."""
-
-    total_anomalies: int
-    severity_distribution: Dict[str, int]
-    common_risk_flags: List[Dict[str, Any]]
-    average_prevalence: float
-
-
-# Alias for backwards compatibility
-AnomalyStats = AnomalyStatsResponse
-
-
 # === Stage 6 Pipeline Schemas ===
 
 
@@ -289,7 +276,8 @@ class PipelinePerformance(BaseModel):
     """Pipeline performance metrics."""
 
     stage1_detections: int
-    stage2_filtered: int
+    stage2_passed: int
+    stage2_filtered_out: int
     stage3_clustered: int
     stage4_compounds: int
     stage5_calibrated: int

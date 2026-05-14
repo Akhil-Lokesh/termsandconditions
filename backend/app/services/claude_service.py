@@ -54,6 +54,7 @@ class ClaudeService:
         temperature: float = 0.0,
         max_tokens: int = 4096,
         system_message: Optional[str] = None,
+        cache_system: bool = False,
     ) -> str:
         """
         Generate chat completion using Claude.
@@ -64,6 +65,9 @@ class ClaudeService:
             temperature: Sampling temperature (0.0 for deterministic)
             max_tokens: Maximum tokens in response
             system_message: Optional system message for context
+            cache_system: If True, mark `system_message` as an ephemeral prompt-cache
+                breakpoint (Anthropic prompt caching). The system block must be ≥1024
+                tokens for caching to take effect on Sonnet 4.
 
         Returns:
             Generated completion text
@@ -87,14 +91,33 @@ class ClaudeService:
                 "messages": [{"role": "user", "content": prompt}],
             }
 
-            # Add system message if provided
+            # Add system message — as a content block when caching is requested
             if system_message:
-                request_params["system"] = system_message
+                if cache_system:
+                    request_params["system"] = [
+                        {
+                            "type": "text",
+                            "text": system_message,
+                            "cache_control": {"type": "ephemeral"},
+                        }
+                    ]
+                else:
+                    request_params["system"] = system_message
 
             response = await self.client.messages.create(**request_params)
 
             # Extract text from response
             completion = response.content[0].text
+
+            cache_info = getattr(response, "usage", None)
+            if cache_info is not None:
+                cache_read = getattr(cache_info, "cache_read_input_tokens", 0) or 0
+                cache_write = getattr(cache_info, "cache_creation_input_tokens", 0) or 0
+                if cache_read or cache_write:
+                    logger.info(
+                        f"Claude cache stats — read: {cache_read} tokens, "
+                        f"write: {cache_write} tokens"
+                    )
 
             logger.debug(f"Generated completion ({len(completion)} chars)")
             return completion
@@ -112,6 +135,8 @@ class ClaudeService:
         model: Optional[str] = None,
         temperature: float = 0.0,
         max_tokens: int = 4096,
+        system_message: Optional[str] = None,
+        cache_system: bool = False,
     ) -> Dict[str, Any]:
         """
         Generate completion expecting JSON response.
@@ -121,6 +146,8 @@ class ClaudeService:
             model: Model to use (defaults to Claude Sonnet)
             temperature: Sampling temperature
             max_tokens: Maximum tokens in response
+            system_message: Optional cacheable system instructions / rubric
+            cache_system: Mark system block for prompt-cache reuse
 
         Returns:
             Parsed JSON response as dict
@@ -134,6 +161,8 @@ class ClaudeService:
                 model=model,
                 temperature=temperature,
                 max_tokens=max_tokens,
+                system_message=system_message,
+                cache_system=cache_system,
             )
 
             # Parse JSON response

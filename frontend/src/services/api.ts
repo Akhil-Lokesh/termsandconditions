@@ -91,7 +91,7 @@ class APIClient {
             case 401:
               message = 'Please log in to continue.';
               this.clearToken();
-              window.location.href = '/login';
+              window.dispatchEvent(new Event('auth:logout'));
               break;
             case 403:
               message = 'You do not have permission to perform this action.';

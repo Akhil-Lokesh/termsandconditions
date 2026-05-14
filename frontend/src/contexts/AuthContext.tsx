@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { api } from '@/services/api';
 import type { User, LoginRequest, SignupRequest } from '@/types';
 
@@ -16,6 +17,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     // Check if user is already logged in
@@ -36,6 +38,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     checkAuth();
   }, []);
 
+  const logout = useCallback(() => {
+    queryClient.clear();
+    api.logout();
+    setUser(null);
+  }, [queryClient]);
+
+  // React to 401 responses dispatched by the API interceptor
+  useEffect(() => {
+    window.addEventListener('auth:logout', logout);
+    return () => window.removeEventListener('auth:logout', logout);
+  }, [logout]);
+
   const login = async (data: LoginRequest) => {
     await api.login(data);
     // After login, fetch user data
@@ -44,13 +58,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const signup = async (data: SignupRequest) => {
-    const user = await api.signup(data);
-    setUser(user);
-  };
-
-  const logout = () => {
-    api.logout();
-    setUser(null);
+    const newUser = await api.signup(data);
+    setUser(newUser);
   };
 
   return (

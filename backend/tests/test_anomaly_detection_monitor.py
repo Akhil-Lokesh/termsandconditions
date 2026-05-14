@@ -48,10 +48,10 @@ class TestAnomalyDetectionMonitor:
         }
         active_learning.feedback_buffer = [
             {'user_action': 'helpful', 'confidence': 0.8},
-            {'user_action': 'dismissed', 'confidence': 0.6},
+            {'user_action': 'helpful', 'confidence': 0.7},
             {'user_action': 'acted_on', 'confidence': 0.9},
-            {'user_action': 'false_positive', 'confidence': 0.5},
-        ] * 50  # 200 total feedback items
+            {'user_action': 'dismissed', 'confidence': 0.6},
+        ] * 50  # 200 total: 100 helpful, 50 acted_on, 50 dismissed, 0 false_positive
         detector.active_learning = active_learning
 
         return detector
@@ -80,10 +80,10 @@ class TestAnomalyDetectionMonitor:
         """Test daily monitoring with healthy metrics."""
         target_date = date(2025, 1, 15)
 
-        # Mock database queries
+        # Mock database queries — keep avg_alerts_per_doc under threshold (5.0 * 2 = 10.0)
         mock_query = Mock()
         mock_query.filter.return_value.scalar.side_effect = [
-            100,  # total_detections
+            40,   # total_detections
             10,   # documents_analyzed
         ]
         mock_db.query.return_value = mock_query
@@ -98,9 +98,9 @@ class TestAnomalyDetectionMonitor:
 
         # Verify results structure
         assert results['date'] == '2025-01-15'
-        assert results['total_detections'] == 100
+        assert results['total_detections'] == 40
         assert results['documents_analyzed'] == 10
-        assert results['avg_alerts_per_doc'] == 10.0
+        assert results['avg_alerts_per_doc'] == 4.0
         assert results['p95_processing_time'] == 5.0
         assert results['status'] == 'HEALTHY'
         assert len(results['alerts']) == 0
@@ -272,8 +272,9 @@ class TestAnomalyDetectionMonitor:
 
     def test_get_weekly_trends_increasing(self, monitor, mock_db):
         """Test trend detection for increasing alerts."""
-        # Mock increasing detections
-        total_detections = [50, 100, 150, 200]
+        # Data is fetched most-recent-first (week_offset 0..3), then reversed to chronological.
+        # To get an INCREASING trend after reverse, provide decreasing data here.
+        total_detections = [200, 150, 100, 50]
         documents_analyzed = [10, 10, 10, 10]
 
         call_count = [0]
@@ -288,7 +289,7 @@ class TestAnomalyDetectionMonitor:
 
         results = monitor.get_weekly_trends(weeks=4)
 
-        # Should detect increasing trend
+        # Should detect increasing trend (chronological: 5 → 10 → 15 → 20)
         assert results['trends']['avg_alerts_trend'] == 'INCREASING'
 
     def test_get_calibration_quality_fitted(self, monitor):
@@ -447,7 +448,7 @@ class TestScheduledMonitoring:
         """Test scheduler setup."""
         mock_db_factory = Mock()
 
-        with patch('app.core.anomaly_detection_monitor.BackgroundScheduler') as MockScheduler:
+        with patch('apscheduler.schedulers.background.BackgroundScheduler') as MockScheduler:
             mock_scheduler = Mock()
             MockScheduler.return_value = mock_scheduler
 
@@ -471,7 +472,7 @@ class TestScheduledMonitoring:
         mock_db = Mock()
         mock_db_factory.return_value = mock_db
 
-        with patch('app.core.anomaly_detection_monitor.BackgroundScheduler') as MockScheduler:
+        with patch('apscheduler.schedulers.background.BackgroundScheduler') as MockScheduler:
             with patch('app.core.anomaly_detection_monitor.AnomalyDetectionMonitor') as MockMonitor:
                 mock_scheduler = Mock()
                 MockScheduler.return_value = mock_scheduler
@@ -505,7 +506,7 @@ class TestScheduledMonitoring:
         mock_db = Mock()
         mock_db_factory.return_value = mock_db
 
-        with patch('app.core.anomaly_detection_monitor.BackgroundScheduler') as MockScheduler:
+        with patch('apscheduler.schedulers.background.BackgroundScheduler') as MockScheduler:
             with patch('app.core.anomaly_detection_monitor.AnomalyDetectionMonitor') as MockMonitor:
                 mock_scheduler = Mock()
                 MockScheduler.return_value = mock_scheduler

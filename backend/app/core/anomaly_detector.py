@@ -15,14 +15,17 @@ Multi-Stage Detection Pipeline:
 """
 
 import time
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
+
+from app.core.llm_clause_detector import LLMClauseDetector
+from app.core.rag_anomaly_detector import ContextTag
 
 from app.services.pinecone_service import PineconeService
 from app.services.claude_service import ClaudeService
 from app.services.embedding_service import EmbeddingService
 from app.core.prevalence_calculator import PrevalenceCalculator
-from app.core.risk_assessor import RiskAssessor
 from app.core.risk_indicators import RiskIndicators
 from app.core.semantic_risk_detector import SemanticRiskDetector  # Legacy - will be replaced
 from app.core.compound_risk_detector import CompoundRiskDetector
@@ -47,144 +50,12 @@ from app.core.constants import (
     CommonnessThresholds,
     get_display_category,
     get_threat_level_from_score,
+    CATEGORY_PREVALENCE_ESTIMATES,
+    INDUSTRY_PREVALENCE_MODIFIERS,
 )
 from app.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
-
-# Estimated prevalence by risk category (based on analysis of 100+ T&C documents)
-# These are fallback values when Pinecone baseline is unavailable
-#
-# PREVALENCE TIERS:
-# - >= 0.70: SUPPRESS (very common, standard language - hide by default)
-# - 0.50-0.69: REDUCE (common, reduce severity)
-# - 0.30-0.49: FLAG (notable, show with context)
-# - < 0.30: ALWAYS FLAG (unusual/rare - red flags)
-#
-CATEGORY_PREVALENCE_ESTIMATES = {
-    # ============================================================
-    # SUPPRESS BY DEFAULT (>= 85%) - Only very common boilerplate
-    # These are truly universal clauses - can be hidden
-    # NOTE: Threshold raised to 85% to reduce over-suppression
-    # ============================================================
-    'survival_clauses': 0.70,        # Common but risky - reduced from 0.95
-    'asymmetric_assignment': 0.70,   # Common but risky - reduced from 0.95
-    'governing_law': 0.95,           # Universal - SUPPRESS
-    'severability': 0.92,            # Almost universal - SUPPRESS
-    'entire_agreement': 0.92,        # Almost universal - SUPPRESS
-    'data_throttling': 0.90,         # All telecom "unlimited" plans - SUPPRESS
-    'p2p_scam_liability': 0.90,      # All P2P payment apps - SUPPRESS
-    'crypto_bankruptcy_risk': 0.90,  # All crypto platforms - SUPPRESS
-
-    # ============================================================
-    # COMMON BUT SHOW (70-84%) - Common, may still be notable
-    # These are common but can have problematic variations - SHOW
-    # NOTE: Reduced from 80-90% to ensure risky variants are caught
-    # ============================================================
-    'liability': 0.75,               # Common but can be egregious (was 0.90)
-    'warranty': 0.75,                # Standard but worth noting (was 0.85)
-    'liability_limitation': 0.75,    # Depends on severity (was 0.85)
-    'indemnification': 0.70,         # Common but notable (was 0.80)
-    'digital_ownership_illusion': 0.80,  # Universal in digital content
-    'broad_liability_disclaimer': 0.70,  # Standard but notable (was 0.80)
-    'fdic_passthrough': 0.80,        # Most fintech apps
-
-    # ============================================================
-    # NOTEWORTHY (50-69%) - Common practices, always show
-    # Show these with appropriate severity - never suppress
-    # ============================================================
-    'content': 0.55,                 # Content licensing is notable (was 0.75)
-    'broad_content_license': 0.55,   # Sublicensable is notable (was 0.75)
-    'modification': 0.65,            # Terms changes are notable (was 0.70)
-    'termination': 0.60,             # Standard termination rights
-    'privacy': 0.55,                 # Privacy policies are standard
-    'data': 0.55,                    # Data usage clauses
-    'unilateral_changes': 0.55,      # Most T&Cs have change clauses
-    'payment': 0.50,                 # Payment terms
-    'other': 0.50,                   # Default for unknown categories
-    'indefinite_data_retention': 0.50,  # Legal retention common
-    'slow_content_deletion': 0.50,   # Backup deletion delays common
-    'auto_renewal': 0.60,            # Notable (was 0.82)
-    'arbitration': 0.50,             # Notable (was 0.65)
-    'class_action_waiver': 0.50,     # Notable - reduced (was 0.60)
-    'asymmetric_jurisdiction': 0.55, # Forum selection clauses
-    'price_changes': 0.55,           # Price increase rights (was 0.60)
-    'voice_video_retention': 0.50,   # IoT/smart devices
-    'hipaa_coverage_gap': 0.45,      # Health/wellness apps only
-
-    # ============================================================
-    # UNCOMMON (15-40%) - Less common, flag prominently
-    # These are notable and should be highlighted
-    # ============================================================
-    'family_liability': 0.18,                # Rare - family member payment responsibility
-    'unlimited_financial_exposure': 0.22,    # Rare - unlimited liability for others
-    'music_library_lock_in': 0.25,           # Lose uploads on cancel
-    'content_loss_on_cancellation': 0.28,    # Lose access to own content
-
-    # ============================================================
-    # ALWAYS FLAG (< 30%) - Rare/unusual - RED FLAGS
-    # These are critical patterns that should ALWAYS be shown
-    # ============================================================
-    'data_selling': 0.10,            # Explicit data selling - CRITICAL
-    'biometric': 0.08,               # Biometric data collection - CRITICAL
-    'biometric_data_collection': 0.08,  # Biometric collection - CRITICAL
-    'rights_waiver': 0.05,           # Waive all legal rights - CRITICAL
-    'warrantless_law_enforcement': 0.08,  # Rare - CRITICAL
-    'worker_misclassification': 0.10,    # Gig economy RED FLAG
-    'perpetual_license': 0.15,       # Perpetual irrevocable content license
-    'perpetual_irrevocable_license': 0.15,  # Forever license
-    'statute_limitation': 0.15,      # Shortened statute of limitations
-    'shortened_statute_limitations': 0.15,  # Shortened legal timeframes
-    'location_always': 0.15,         # Always-on location tracking
-    'fund_holds_freezing': 0.20,     # Fund freezing (except fintech)
-    'no_refund_absolute': 0.25,      # Absolute no refund policy
-    'explicit_account_termination': 0.25,  # Explicit permanent ban language
-    'unilateral_content_removal': 0.28,    # Content removal power
-}
-
-# Industry-specific prevalence modifiers
-# Some patterns are normal in one industry but red flags in another
-INDUSTRY_PREVALENCE_MODIFIERS = {
-    'social_media': {
-        'perpetual_irrevocable_license': 0.60,  # Reduced from 0.95 - still show even if common
-        'forced_arbitration_class_waiver': 0.42,
-        'data_sharing': 0.70,  # Reduced from 0.90
-        'broad_content_license': 0.60,  # Reduced from 0.95 - still show even if common
-    },
-    'financial': {
-        'forced_arbitration_class_waiver': 0.98,  # Near universal in banking
-        'fund_holds_freezing': 0.90,              # Normal for payment processors
-        'fdic_passthrough': 0.95,                 # Common for fintech
-        'explicit_account_termination': 0.80,
-    },
-    'gig_economy': {
-        'worker_misclassification': 1.0,  # 100% of gig apps
-        'forced_arbitration_class_waiver': 1.0,
-        'unlimited_liability': 0.90,
-    },
-    'iot_smart_home': {
-        'voice_video_retention': 0.95,
-        'data_sharing': 0.90,
-        'warrantless_law_enforcement': 0.30,  # Ring, Amazon devices
-    },
-    'telecom': {
-        'data_throttling': 0.99,
-        'forced_arbitration_class_waiver': 0.95,
-    },
-    'crypto': {
-        'crypto_bankruptcy_risk': 0.99,
-        'forced_arbitration_class_waiver': 0.85,
-        'fund_holds_freezing': 0.80,
-    },
-    'health_wellness': {
-        'hipaa_coverage_gap': 0.70,  # Most fitness apps
-        'data_sharing': 0.75,
-    },
-    'gaming_digital': {
-        'digital_ownership_illusion': 0.99,
-        'unilateral_termination': 0.90,
-    }
-}
 
 
 class AnomalyDetector:
@@ -216,8 +87,7 @@ class AnomalyDetector:
         self.db = db
 
         # Legacy detectors (maintained for backward compatibility)
-        self.prevalence_calc = PrevalenceCalculator(self.embedding, self.pinecone, self.db)  # FIXED: Use embedding, not claude
-        self.risk_assessor = RiskAssessor(llm_service=self.claude, use_gpt5=False, db=self.db)
+        self.prevalence_calc = PrevalenceCalculator(self.embedding, self.pinecone, self.db)
         self.risk_indicators = RiskIndicators()
         self.semantic_detector = SemanticRiskDetector(self.embedding)  # FIXED: Use EmbeddingService
         self.compound_detector = CompoundRiskDetector()
@@ -525,6 +395,54 @@ class AnomalyDetector:
             }
         }
 
+    def run_stage1(
+        self,
+        clauses: List[Dict[str, Any]],
+        context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Run Stage 1 multi-method detection on a list of clauses.
+
+        Uses pattern-based keyword detection on each clause.
+        Returns dict with 'anomalies' list for downstream stages.
+        """
+        service_type = context.get('service_type', 'general')
+        anomalies = []
+
+        for clause in clauses:
+            clause_text = clause.get('text', '')
+            clause_number = clause.get('clause_number', 'unknown')
+
+            if not clause_text or len(clause_text.strip()) < 10:
+                continue
+
+            # Pattern-based detection
+            detected_indicators = self.risk_indicators.detect_indicators(
+                clause_text=clause_text,
+                service_type=service_type,
+            )
+
+            if detected_indicators:
+                high_severity = sum(1 for ind in detected_indicators if ind.get('severity') == 'high')
+                medium_severity = sum(1 for ind in detected_indicators if ind.get('severity') == 'medium')
+                pattern_confidence = min(1.0, 0.5 + (high_severity * 0.2) + (medium_severity * 0.1))
+
+                severity = 'high' if high_severity > 0 else 'medium' if medium_severity > 0 else 'low'
+
+                anomalies.append({
+                    'clause_number': clause_number,
+                    'clause_text': clause_text,
+                    'severity': severity,
+                    'risk_category': detected_indicators[0].get('category', 'other'),
+                    'detected_indicators': detected_indicators,
+                    'stage1_detection': {
+                        'stage1_confidence': pattern_confidence,
+                        'methods': {'pattern': True, 'semantic': False, 'statistical': False},
+                    },
+                })
+
+        return {'anomalies': anomalies}
+
     async def run_stage2(
         self,
         stage1_results: List[Dict[str, Any]],
@@ -624,6 +542,18 @@ class AnomalyDetector:
         stage2_results = []
         filtered_out_count = 0
 
+        # Batch-embed all clause texts upfront (much faster than per-clause calls)
+        clause_embeddings_map = {}
+        if self.embedding and self.industry_filter:
+            try:
+                clause_texts = [a.get('clause_text', '') for a in stage1_results]
+                clause_keys = [a.get('clause_number', f'unknown_{i}') for i, a in enumerate(stage1_results)]
+                embeddings = await self.embedding.batch_create_embeddings(clause_texts)
+                clause_embeddings_map = dict(zip(clause_keys, embeddings))
+                logger.info(f"Batch-embedded {len(embeddings)} clauses for Stage 2")
+            except Exception as e:
+                logger.warning(f"Batch embedding failed, falling back to category estimates: {e}")
+
         for anomaly in stage1_results:
             try:
                 # Extract anomaly data
@@ -650,14 +580,8 @@ class AnomalyDetector:
 
                 if self.industry_filter:
                     try:
-                        # Get clause embedding (reuse from stage1 or generate)
-                        clause_embedding = None
-                        if self.embedding:
-                            try:
-                                # Use the detector's embedding service
-                                clause_embedding = await self.embedding.create_embedding(clause_text)
-                            except Exception as e:
-                                logger.warning(f"Failed to get embedding for {clause_number}: {e}")
+                        # Use pre-computed batch embedding
+                        clause_embedding = clause_embeddings_map.get(clause_number)
 
                         if clause_embedding:
                             # Calculate prevalence from baseline
@@ -1233,8 +1157,7 @@ class AnomalyDetector:
             return
 
         try:
-            # TODO: Load from database if training_data_path is None
-            # For now, log that calibrator needs training data
+            # Calibrator trains from feedback data; uses raw scores until feedback is collected
             if training_data_path is None:
                 logger.info(
                     "No training data path provided. Calibrator will use raw scores "
@@ -1739,23 +1662,26 @@ class AnomalyDetector:
         # =====================================================================
         llm_findings_map = {}
         try:
-            from app.core.llm_clause_detector import LLMClauseDetector
             llm_detector = LLMClauseDetector(self.claude)
 
             # Collect all clauses for batch analysis
-            # Use section_name.clause_idx as unique ID to avoid duplicate clause_numbers
+            # Use simple sequential numeric IDs so Claude can return them exactly
             all_clause_list = []
-            for section in sections:
+            clause_id_counter = 0
+            llm_id_map = {}  # (section_idx, clause_idx) -> sequential_id
+
+            for section_idx, section in enumerate(sections):
                 section_name = section.get("title", section.get("section_name", "Unknown Section"))
                 for clause_idx, clause in enumerate(section.get("clauses", [])):
                     clause_text = clause.get("text", "")
-                    # Generate a unique clause ID: section.index
-                    unique_clause_id = f"{section_name}.{clause_idx}"
+                    clause_id_counter += 1
+                    seq_id = str(clause_id_counter)
+                    llm_id_map[(section_idx, clause_idx)] = seq_id
                     if clause_text and len(clause_text.strip()) >= 20:
                         all_clause_list.append({
                             "text": clause_text,
                             "section": section_name,
-                            "clause_number": unique_clause_id,
+                            "clause_number": seq_id,
                         })
 
             logger.info(f"Running LLM batch detection on {len(all_clause_list)} clauses...")
@@ -1773,7 +1699,7 @@ class AnomalyDetector:
             logger.warning(f"LLM batch detection failed, continuing with keyword-only: {e}")
             llm_findings_map = {}
 
-        for section in sections:
+        for section_idx, section in enumerate(sections):
             section_name = section.get("title", section.get("section_name", "Unknown Section"))
             clauses = section.get("clauses", [])
             total_clauses += len(clauses)
@@ -1785,10 +1711,10 @@ class AnomalyDetector:
             for clause_idx, clause in enumerate(clauses):
                 clause_text = clause.get("text", "")
                 clause_number = clause.get(
-                    "clause_number", f"{section_name}.{clause_idx}"
+                    "clause_number", str(llm_id_map.get((section_idx, clause_idx), clause_idx))
                 )
-                # Use same unique ID as LLM batch for consistent lookup
-                llm_clause_id = f"{section_name}.{clause_idx}"
+                # Use same sequential ID as LLM batch for consistent lookup
+                llm_clause_id = llm_id_map.get((section_idx, clause_idx), "")
 
                 # Collect text for context detection
                 if clause_text:
@@ -1957,18 +1883,13 @@ class AnomalyDetector:
 
                 is_unusual = prevalence < 0.30
 
-                # Vague language check disabled — "may", "might", "could" appear in virtually
-                # every legal clause and caused massive false positives
-                has_vague_language = False
-
                 logger.info(
                     f"Clause {clause_number}: Decision - is_suspicious={is_suspicious} "
                     f"(keywords: {multi_stage_results['proceed_to_stage2']}, llm: {llm_finding is not None})"
                 )
                 logger.info(
                     f"  Reasons: unusual={is_unusual}, high_risk={has_high_risk}, "
-                    f"medium_risk={has_medium_risk}, vague_language={has_vague_language}, "
-                    f"any_indicators={len(detected_indicators) > 0}"
+                    f"medium_risk={has_medium_risk}, any_indicators={len(detected_indicators) > 0}"
                 )
 
                 logger.debug(
@@ -1979,8 +1900,6 @@ class AnomalyDetector:
 
                 if is_suspicious:
                     # STEP 4: Determine severity from INDICATORS + LLM + RAG CONTEXT
-                    from app.core.rag_anomaly_detector import ContextTag
-
                     # Check RAG context tags for severity adjustment
                     is_platform_required = False
                     is_industry_standard = False
@@ -2002,7 +1921,6 @@ class AnomalyDetector:
                         keyword_severity = "medium"
 
                     # Merge severity: LLM is primary (better calibrated), keyword only escalates critical
-                    severity_order = {"critical": 4, "high": 3, "medium": 2, "low": 1}
                     if llm_finding:
                         llm_severity = llm_finding.get("severity", "medium")
                         # Trust LLM severity, but let keywords escalate to critical
@@ -2272,9 +2190,6 @@ class AnomalyDetector:
             'total_processing_time_ms': round(total_pipeline_duration, 2)
         }
 
-        # Build final comprehensive report
-        from datetime import datetime
-
         # Run competitive analysis to benchmark against industry peers
         competitive_benchmark = None
         try:
@@ -2309,17 +2224,17 @@ class AnomalyDetector:
 
         # INVERTED FUNNEL: Enrich anomalies with threat level and commonness
         inverted_funnel_data = self._enrich_with_inverted_funnel(
-            all_anomalies=all_anomalies,
+            _all_anomalies=all_anomalies,
             high_severity=stage6_result['high_severity'],
             medium_severity=stage6_result['medium_severity'],
             low_severity=stage6_result['low_severity'],
-            industry=document_context.get('industry', 'general') if document_context else 'general'
+            _industry=document_context.get('industry', 'general') if document_context else 'general'
         )
 
         final_report = {
             'document_id': document_id,
             'company_name': company_name,
-            'analysis_date': datetime.utcnow().isoformat(),
+            'analysis_date': datetime.now(timezone.utc).isoformat(),
             'overall_risk_score': round(overall_risk_score, 1),
             'high_severity_alerts': stage6_result['high_severity'],
             'medium_severity_alerts': stage6_result['medium_severity'],
@@ -2389,11 +2304,11 @@ class AnomalyDetector:
 
     def _enrich_with_inverted_funnel(
         self,
-        all_anomalies: List[Dict[str, Any]],
+        _all_anomalies: List[Dict[str, Any]],
         high_severity: List[Dict[str, Any]],
         medium_severity: List[Dict[str, Any]],
         low_severity: List[Dict[str, Any]],
-        industry: str = "general",
+        _industry: str = "general",
     ) -> Dict[str, Any]:
         """
         Enrich anomalies with inverted funnel data (threat level + commonness).

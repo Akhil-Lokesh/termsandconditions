@@ -9,7 +9,7 @@ Stage 5 of the anomaly detection pipeline: Active Learning & Feedback Loop
 """
 
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import numpy as np
 from app.core.confidence_calibrator import ConfidenceCalibrator
 from app.utils.logger import setup_logger
@@ -107,7 +107,7 @@ class ActiveLearningManager:
             'user_action': user_action,
             'confidence': confidence_at_detection,
             'was_correct': was_correct,
-            'timestamp': datetime.utcnow()
+            'timestamp': datetime.now(timezone.utc)
         }
 
         # Add to buffer
@@ -182,7 +182,7 @@ class ActiveLearningManager:
 
             # Update metrics
             self.retrain_count += 1
-            self.last_retrain_date = datetime.utcnow()
+            self.last_retrain_date = datetime.now(timezone.utc)
 
             # Log retraining metrics
             logger.info("=" * 60)

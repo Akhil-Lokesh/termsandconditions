@@ -22,8 +22,8 @@ export const LoginForm = () => {
       await login({ username: email, password });
       toast.success('Welcome back!');
       navigate('/dashboard');
-    } catch (error: any) {
-      const message = error.response?.data?.detail || 'Login failed. Please check your credentials.';
+    } catch (error: unknown) {
+      const message = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Login failed. Please check your credentials.';
       toast.error(message);
     } finally {
       setIsLoading(false);

@@ -7,6 +7,7 @@ Handles document queries with semantic search and citation generation.
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from typing import List, Dict
+import hashlib
 import logging
 
 from app.api.deps import (
@@ -25,7 +26,8 @@ from app.services.embedding_service import EmbeddingService
 from app.services.pinecone_service import PineconeService
 from app.services.cache_service import CacheService
 from app.services.claude_service import ClaudeService
-from app.prompts.qa_prompts import QA_SYSTEM_PROMPT
+from app.prompts.qa_prompts import QA_SYSTEM_INSTRUCTIONS, QA_USER_TEMPLATE
+from app.core.rate_limit import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +88,7 @@ router = APIRouter()
         422: {"description": "Invalid question format"},
     },
 )
+@limiter.limit("100/hour")
 async def query_document(
     request: Request,
     query_data: QueryRequest,
@@ -140,7 +143,8 @@ async def query_document(
         )
 
     # Check cache first (optional, graceful degradation)
-    cache_key = f"query:{query_data.document_id}:{hash(query_data.question)}"
+    q_hash = hashlib.sha256(query_data.question.encode()).hexdigest()[:16]
+    cache_key = f"query:{query_data.document_id}:{q_hash}"
     if cache_service:
         try:
             cached = await cache_service.get(cache_key)
@@ -233,14 +237,15 @@ async def query_document(
         # ============================================================
         # STEP 4: Generate answer with Claude
         # ============================================================
-        prompt = QA_SYSTEM_PROMPT.format(
+        user_msg = QA_USER_TEMPLATE.format(
             context=context,
             question=query_data.question,
         )
 
         answer = await claude_service.create_completion(
-            prompt=prompt,
-            temperature=0.0,  # Deterministic answers
+            prompt=user_msg,
+            system_message=QA_SYSTEM_INSTRUCTIONS,
+            temperature=0.0,
             max_tokens=500,
         )
 
@@ -280,8 +285,13 @@ async def query_document(
         # Cache response (optional, graceful degradation)
         if cache_service:
             try:
-                await cache_service.set(cache_key, response.dict(), ttl=3600)  # 1 hour
-                logger.info("Response cached")
+                await cache_service.set(cache_key, response.dict(), ttl=3600)
+                # Append to per-document query history (last 20 entries)
+                history_key = f"query_history:{query_data.document_id}:{current_user.id}"
+                entry = {"question": query_data.question, "answer": answer, "confidence": confidence}
+                existing = await cache_service.get(history_key) or []
+                existing.append(entry)
+                await cache_service.set(history_key, existing[-20:], ttl=86400)
             except Exception as e:
                 logger.warning(f"Cache storage failed: {e}")
 
@@ -295,44 +305,37 @@ async def query_document(
         logger.error(f"Query failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Query processing failed: {str(e)}",
+            detail="Query processing failed. Please try again.",
         )
 
 
 @router.get(
     "/history/{document_id}",
     summary="Get Query History",
-    description="Get recent queries for a document (future enhancement)",
+    description="Get the last 20 queries asked about a document (cached per session).",
 )
 async def get_query_history(
     document_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
+    cache_service: CacheService = Depends(get_cache_service),
 ):
-    """
-    Get query history for a document.
-
-    **Note**: Not yet implemented. Returns empty list.
-    """
-    # Verify document access
+    """Get recent query history for a document."""
     document = (
         db.query(Document)
-        .filter(
-            Document.id == document_id,
-            Document.user_id == current_user.id,
-        )
+        .filter(Document.id == document_id, Document.user_id == current_user.id)
         .first()
     )
 
     if not document:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Document not found: {document_id}",
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
-    # TODO: Implement query history tracking
-    return {
-        "document_id": document_id,
-        "queries": [],
-        "message": "Query history tracking coming soon",
-    }
+    queries = []
+    if cache_service:
+        try:
+            history_key = f"query_history:{document_id}:{current_user.id}"
+            queries = await cache_service.get(history_key) or []
+        except Exception as e:
+            logger.warning(f"Failed to fetch query history: {e}")
+
+    return {"document_id": document_id, "queries": queries, "total": len(queries)}

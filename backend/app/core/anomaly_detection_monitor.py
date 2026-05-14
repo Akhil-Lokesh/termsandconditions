@@ -433,9 +433,10 @@ class AnomalyDetectionMonitor:
             'calibration_status': calibration_status
         }
 
+        ece_str = f"{ece:.4f}" if ece else "N/A"
         logger.info(
             f"Calibration quality: status={calibration_status}, "
-            f"ECE={ece:.4f if ece else 'N/A'}, "
+            f"ECE={ece_str}, "
             f"samples={feedback_stats['total_feedback_collected']}"
         )
 
@@ -459,13 +460,38 @@ class AnomalyDetectionMonitor:
         Returns:
             95th percentile processing time in seconds
         """
-        # TODO: Implement actual processing time tracking in database
-        # For now, return a reasonable placeholder
-        # In production, query: SELECT processing_time_ms FROM metrics
-        # WHERE created_at BETWEEN start AND end
-        # Then calculate: np.percentile(times, 95) / 1000
-
-        return 5.0  # Placeholder: 5 seconds
+        # Derive processing time from document created_at → updated_at delta.
+        # This is an approximation; a dedicated metrics table would be more precise.
+        try:
+            from app.db.session import SessionLocal
+            from app.models.document import Document
+            db = SessionLocal()
+            try:
+                docs = (
+                    db.query(Document.created_at, Document.updated_at)
+                    .filter(
+                        Document.created_at >= start_datetime,
+                        Document.created_at <= end_datetime,
+                        Document.updated_at.isnot(None),
+                        Document.processing_status == "completed",
+                    )
+                    .all()
+                )
+                if docs:
+                    times = [
+                        (d.updated_at - d.created_at).total_seconds()
+                        for d in docs
+                        if d.updated_at and d.created_at and d.updated_at > d.created_at
+                    ]
+                    if times:
+                        times.sort()
+                        idx = int(len(times) * 0.95)
+                        return times[min(idx, len(times) - 1)]
+            finally:
+                db.close()
+        except Exception:
+            pass
+        return 5.0  # Fallback when no completed documents in range
 
     def _analyze_trends(self, weekly_data: List[Dict[str, Any]]) -> Dict[str, Any]:
         """

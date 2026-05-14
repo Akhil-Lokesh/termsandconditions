@@ -109,7 +109,7 @@ export const DocumentCard = ({ document }: DocumentCardProps) => {
               <span className="text-[10px] font-mono uppercase tracking-wider">Company</span>
             </div>
             <p className="text-sm font-medium text-foreground truncate">
-              {document.metadata?.company || 'Unknown'}
+              {document.metadata?.company || document.metadata?.company_name || 'Unknown'}
             </p>
           </div>
 

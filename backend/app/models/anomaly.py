@@ -2,7 +2,7 @@
 
 from sqlalchemy import Column, String, Text, Float, DateTime, ForeignKey, JSON
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 from app.db.base import Base
@@ -30,7 +30,7 @@ class Anomaly(Base):
     risk_flags = Column(
         JSON, nullable=True
     )  # Legacy field - now using detected_indicators
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     # Relationships
     document = relationship("Document", back_populates="anomalies")

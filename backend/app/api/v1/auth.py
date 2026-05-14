@@ -4,11 +4,13 @@ Authentication endpoints.
 Provides user registration, login, and token management with JWT.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import timedelta
 import logging
+
+from app.core.rate_limit import limiter
 
 from app.api.deps import get_db, get_current_active_user
 from app.core.config import settings
@@ -32,7 +34,9 @@ router = APIRouter()
     summary="Register New User",
     description="Create a new user account with email and password.",
 )
+@limiter.limit("10/hour")
 async def signup(
+    request: Request,
     user_data: UserCreate,
     db: Session = Depends(get_db),
 ):
@@ -95,7 +99,9 @@ async def signup(
     summary="Login",
     description="Login with email and password to receive JWT access token.",
 )
+@limiter.limit("20/hour")
 async def login(
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):

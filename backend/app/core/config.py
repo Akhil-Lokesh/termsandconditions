@@ -16,8 +16,9 @@ class Settings(BaseSettings):
 
     # Application
     APP_NAME: str = "T&C Analysis API"
-    ENVIRONMENT: str = "development"
+    ENVIRONMENT: str = "production"
     DEBUG: bool = False
+    TRUSTED_PROXY_IPS: str = "127.0.0.1"  # Space-separated IPs of trusted reverse proxies
 
     # Anthropic Claude Configuration
     ANTHROPIC_API_KEY: str

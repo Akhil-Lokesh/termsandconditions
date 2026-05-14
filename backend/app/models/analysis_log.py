@@ -17,7 +17,7 @@ from sqlalchemy import (
     Text,
 )
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 from app.db.base import Base
@@ -70,7 +70,7 @@ class AnalysisLog(Base):
     # Metadata
     company_name = Column(String, nullable=True)
     industry = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     # Relationships
     document = relationship("Document", back_populates="analysis_logs")

@@ -8,11 +8,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.core.config import settings
+from app.core.rate_limit import limiter
 from app.services.claude_service import ClaudeService
 from app.services.embedding_service import EmbeddingService
 from app.services.pinecone_service import PineconeService
@@ -24,13 +24,6 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
-
-
-# Initialize rate limiter
-limiter = Limiter(
-    key_func=get_remote_address,
-    default_limits=[f"{settings.RATE_LIMIT_PER_HOUR}/hour"],
-)
 
 
 @asynccontextmanager
@@ -143,9 +136,15 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.BACKEND_CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "Accept"],
 )
+
+# Add ProxyHeadersMiddleware so X-Forwarded-For from trusted proxies is used
+# for rate limiting. trusted_hosts restricts which upstream IPs are trusted.
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+trusted_proxy = getattr(settings, "TRUSTED_PROXY_IPS", "127.0.0.1")
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=trusted_proxy)
 
 # Add rate limiting
 app.state.limiter = limiter
@@ -202,16 +201,6 @@ async def health_check_services():
             if all_required_healthy
             else "Some required services unavailable"
         ),
-        "details": {
-            "embedding": "✓ Local (sentence-transformers)" if services["embedding"] else "✗ Unavailable",
-            "pinecone": "✓ Connected" if services["pinecone"] else "✗ Unavailable",
-            "claude": "✓ Connected" if services["claude"] else "✗ Unavailable",
-            "cache": (
-                "✓ Connected"
-                if services["cache"]
-                else "○ Optional (running without cache)"
-            ),
-        },
     }
 
 
@@ -226,7 +215,10 @@ async def root():
 
 
 # Include API routers
-from app.api.v1 import auth, upload, query, anomalies, compare, debug
+from app.api.v1 import auth, upload, query, anomalies, compare
+
+if settings.DEBUG or settings.ENVIRONMENT == "development":
+    from app.api.v1 import debug
 
 app.include_router(
     auth.router,
@@ -258,11 +250,12 @@ app.include_router(
     tags=["Comparison"],
 )
 
-app.include_router(
-    debug.router,
-    prefix=f"{settings.API_V1_PREFIX}/debug",
-    tags=["Debug"],
-)
+if settings.DEBUG or settings.ENVIRONMENT == "development":
+    app.include_router(
+        debug.router,
+        prefix=f"{settings.API_V1_PREFIX}/debug",
+        tags=["Debug"],
+    )
 
 logger.info("✓ API routers registered")
 

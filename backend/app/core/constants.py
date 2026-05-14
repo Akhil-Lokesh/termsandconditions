@@ -852,3 +852,124 @@ INDUSTRY_COMPETITORS = {
         },
     },
 }
+
+
+# =============================================================================
+# CATEGORY PREVALENCE ESTIMATES
+# Estimated prevalence by risk category (based on analysis of 100+ T&C documents)
+# These are fallback values when Pinecone baseline is unavailable
+#
+# PREVALENCE TIERS:
+# - >= 0.70: SUPPRESS (very common, standard language - hide by default)
+# - 0.50-0.69: REDUCE (common, reduce severity)
+# - 0.30-0.49: FLAG (notable, show with context)
+# - < 0.30: ALWAYS FLAG (unusual/rare - red flags)
+# =============================================================================
+
+CATEGORY_PREVALENCE_ESTIMATES = {
+    # SUPPRESS BY DEFAULT (>= 85%) - Only very common boilerplate
+    'survival_clauses': 0.70,
+    'asymmetric_assignment': 0.70,
+    'governing_law': 0.95,
+    'severability': 0.92,
+    'entire_agreement': 0.92,
+    'data_throttling': 0.90,
+    'p2p_scam_liability': 0.90,
+    'crypto_bankruptcy_risk': 0.90,
+
+    # COMMON BUT SHOW (70-84%)
+    'liability': 0.75,
+    'warranty': 0.75,
+    'liability_limitation': 0.75,
+    'indemnification': 0.70,
+    'digital_ownership_illusion': 0.80,
+    'broad_liability_disclaimer': 0.70,
+    'fdic_passthrough': 0.80,
+
+    # NOTEWORTHY (50-69%)
+    'content': 0.55,
+    'broad_content_license': 0.55,
+    'modification': 0.65,
+    'termination': 0.60,
+    'privacy': 0.55,
+    'data': 0.55,
+    'unilateral_changes': 0.55,
+    'payment': 0.50,
+    'other': 0.50,
+    'indefinite_data_retention': 0.50,
+    'slow_content_deletion': 0.50,
+    'auto_renewal': 0.60,
+    'arbitration': 0.50,
+    'class_action_waiver': 0.50,
+    'asymmetric_jurisdiction': 0.55,
+    'price_changes': 0.55,
+    'voice_video_retention': 0.50,
+    'hipaa_coverage_gap': 0.45,
+
+    # UNCOMMON (15-40%)
+    'family_liability': 0.18,
+    'unlimited_financial_exposure': 0.22,
+    'music_library_lock_in': 0.25,
+    'content_loss_on_cancellation': 0.28,
+
+    # ALWAYS FLAG (< 30%) - RED FLAGS
+    'data_selling': 0.10,
+    'biometric': 0.08,
+    'biometric_data_collection': 0.08,
+    'rights_waiver': 0.05,
+    'warrantless_law_enforcement': 0.08,
+    'worker_misclassification': 0.10,
+    'perpetual_license': 0.15,
+    'perpetual_irrevocable_license': 0.15,
+    'statute_limitation': 0.15,
+    'shortened_statute_limitations': 0.15,
+    'location_always': 0.15,
+    'fund_holds_freezing': 0.20,
+    'no_refund_absolute': 0.25,
+    'explicit_account_termination': 0.25,
+    'unilateral_content_removal': 0.28,
+}
+
+# Industry-specific prevalence modifiers
+# Some patterns are normal in one industry but red flags in another
+INDUSTRY_PREVALENCE_MODIFIERS = {
+    'social_media': {
+        'perpetual_irrevocable_license': 0.60,
+        'forced_arbitration_class_waiver': 0.42,
+        'data_sharing': 0.70,
+        'broad_content_license': 0.60,
+    },
+    'financial': {
+        'forced_arbitration_class_waiver': 0.98,
+        'fund_holds_freezing': 0.90,
+        'fdic_passthrough': 0.95,
+        'explicit_account_termination': 0.80,
+    },
+    'gig_economy': {
+        'worker_misclassification': 1.0,
+        'forced_arbitration_class_waiver': 1.0,
+        'unlimited_liability': 0.90,
+    },
+    'iot_smart_home': {
+        'voice_video_retention': 0.95,
+        'data_sharing': 0.90,
+        'warrantless_law_enforcement': 0.30,
+    },
+    'telecom': {
+        'data_throttling': 0.99,
+        'forced_arbitration_class_waiver': 0.95,
+    },
+    'crypto': {
+        'crypto_bankruptcy_risk': 0.99,
+        'forced_arbitration_class_waiver': 0.85,
+        'fund_holds_freezing': 0.80,
+    },
+    'health_wellness': {
+        'hipaa_coverage_gap': 0.70,
+        'data_sharing': 0.75,
+    },
+    'gaming_digital': {
+        'digital_ownership_illusion': 0.99,
+        'unilateral_termination': 0.90,
+    },
+}

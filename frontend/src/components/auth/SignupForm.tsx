@@ -5,9 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { Loader2, Mail, Lock, ArrowRight, KeyRound } from 'lucide-react';
+import { Loader2, Mail, Lock, ArrowRight, KeyRound, User } from 'lucide-react';
 
 export const SignupForm = () => {
+  const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -31,11 +32,13 @@ export const SignupForm = () => {
     setIsLoading(true);
 
     try {
-      await signup({ email, password, full_name: email.split('@')[0] });
+      await signup({ email, password, full_name: fullName || email.split('@')[0] });
       toast.success('Account created successfully!');
       navigate('/dashboard');
-    } catch (error: any) {
-      const message = error.response?.data?.detail || 'Signup failed. Please try again.';
+    } catch (error: unknown) {
+      const message =
+        (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        'Signup failed. Please try again.';
       toast.error(message);
     } finally {
       setIsLoading(false);
@@ -49,13 +52,31 @@ export const SignupForm = () => {
         <div className="p-4 lg:p-6 border-b border-border/30 text-center">
           <h2 className="text-xl lg:text-2xl font-display font-bold text-foreground">Create Account</h2>
           <p className="text-xs lg:text-sm text-muted-foreground mt-1">
-            Sign up to start analyzing T&C documents
+            Sign up to start analyzing T&amp;C documents
           </p>
         </div>
 
         {/* Form */}
         <div className="p-4 lg:p-6">
           <form onSubmit={handleSubmit} className="space-y-4 lg:space-y-5">
+            <div className="space-y-2">
+              <Label htmlFor="fullName" className="text-sm font-medium text-foreground">
+                Full Name
+              </Label>
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="fullName"
+                  type="text"
+                  placeholder="Jane Smith"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  disabled={isLoading}
+                  className="pl-10 bg-muted/30 border-border/50 focus:border-primary/50 focus:ring-primary/20"
+                />
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="email" className="text-sm font-medium text-foreground">
                 Email

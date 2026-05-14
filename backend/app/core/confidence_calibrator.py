@@ -138,9 +138,11 @@ class ConfidenceCalibrator:
             else:
                 quality = "Poor"
 
-            print(f"\n✓ Calibration Quality: {quality} (ECE={ece:.4f})")
-            print(f"  Brier Score: {brier_before:.4f} → {brier_after:.4f} "
-                  f"({((brier_before - brier_after) / brier_before * 100):.1f}% improvement)")
+            logger.info(f"Calibration Quality: {quality} (ECE={ece:.4f})")
+            logger.info(
+                f"Brier Score: {brier_before:.4f} -> {brier_after:.4f} "
+                f"({((brier_before - brier_after) / brier_before * 100):.1f}% improvement)"
+            )
 
         except Exception as e:
             logger.warning(f"Failed to calculate calibration metrics: {e}")

@@ -311,9 +311,17 @@ def mock_pinecone_service():
 @pytest.fixture
 def detector():
     """Create AnomalyDetector instance with mocked external services."""
-    with patch('app.core.anomaly_detector.PineconeService') as mock_pinecone:
+    with patch('app.core.anomaly_detector.PineconeService') as mock_pinecone, \
+         patch('app.core.anomaly_detector.EmbeddingService') as mock_embedding, \
+         patch('app.core.anomaly_detector.ClaudeService') as mock_claude:
         mock_pinecone.return_value = Mock()
-        detector = AnomalyDetector()
+        mock_embedding.return_value = Mock()
+        mock_claude.return_value = Mock()
+        detector = AnomalyDetector(
+            embedding_service=mock_embedding.return_value,
+            pinecone_service=mock_pinecone.return_value,
+            claude_service=mock_claude.return_value,
+        )
         return detector
 
 
@@ -907,7 +915,8 @@ def test_full_pipeline_integration(detector, test_clauses_with_anomalies):
     # Verify pipeline performance tracking
     perf = report['pipeline_performance']
     assert 'stage1_detections' in perf
-    assert 'stage2_filtered' in perf
+    assert 'stage2_passed' in perf
+    assert 'stage2_filtered_out' in perf
     assert 'stage3_clustered' in perf
     assert 'stage4_compounds' in perf
     assert 'stage5_calibrated' in perf
@@ -915,8 +924,8 @@ def test_full_pipeline_integration(detector, test_clauses_with_anomalies):
     assert 'total_processing_time_ms' in perf
 
     # Verify stage progression
-    assert perf['stage1_detections'] >= perf['stage2_filtered']
-    assert perf['stage2_filtered'] >= perf['stage3_clustered']
+    assert perf['stage1_detections'] >= perf['stage2_passed']
+    assert perf['stage2_passed'] >= perf['stage3_clustered']
 
     print(f"\n=== Full Pipeline Integration Test ===")
     print(f"Document: {report['document_id']}")
@@ -924,7 +933,7 @@ def test_full_pipeline_integration(detector, test_clauses_with_anomalies):
     print(f"Alerts Shown: {report['total_alerts_shown']}/{report['total_anomalies_detected']}")
     print(f"Pipeline Stages:")
     print(f"  Stage 1: {perf['stage1_detections']} detections")
-    print(f"  Stage 2: {perf['stage2_filtered']} filtered")
+    print(f"  Stage 2: {perf['stage2_passed']} passed, {perf['stage2_filtered_out']} filtered out")
     print(f"  Stage 3: {perf['stage3_clustered']} clustered")
     print(f"  Stage 4: {perf['stage4_compounds']} compounds")
     print(f"  Stage 5: {perf['stage5_calibrated']} calibrated")

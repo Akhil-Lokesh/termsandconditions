@@ -3,7 +3,7 @@
 from typing import Optional
 from sqlalchemy import Column, String, Integer, Text, DateTime, ForeignKey, JSON, Float
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 from app.db.base import Base
@@ -45,8 +45,8 @@ class Document(Base):
     processing_status = Column(
         String, default="processing"
     )  # processing, completed, failed, anomaly_detection_failed
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationships
     user = relationship("User", back_populates="documents")

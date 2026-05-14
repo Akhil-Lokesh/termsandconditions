@@ -3,14 +3,14 @@ Query schemas for API request/response validation.
 """
 
 from typing import List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class QueryRequest(BaseModel):
     """Query request schema."""
 
     document_id: str
-    question: str
+    question: str = Field(..., min_length=3, max_length=2000)
 
 
 class Citation(BaseModel):

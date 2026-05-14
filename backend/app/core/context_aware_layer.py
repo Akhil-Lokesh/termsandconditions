@@ -14,7 +14,7 @@ to reduce false positives and amplify real risks.
 import logging
 from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 
 from .document_context_detector import DocumentContextDetector, DocumentContext
 from .context_aware_baselines import ContextAwareBaselines, IndustryBaseline
@@ -117,7 +117,7 @@ class ContextAwareLayer:
         Returns:
             ContextAwareAnalysisResult with adjusted anomalies and statistics
         """
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         metadata = metadata or {}
 
         # 1. Auto-detect context
@@ -169,7 +169,7 @@ class ContextAwareLayer:
                     unchanged_count += 1
 
         # Calculate processing time
-        processing_time = (datetime.utcnow() - start_time).total_seconds() * 1000
+        processing_time = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
 
         result = ContextAwareAnalysisResult(
             context=context,
@@ -303,7 +303,7 @@ class ContextAwareLayer:
         original_severity: str,
         pattern: str,
         context: DocumentContext,
-        anomaly: Dict[str, Any] = None
+        anomaly: Optional[Dict[str, Any]] = None,
     ) -> Tuple[str, str, str]:
         """
         Determine final action based on all factors.

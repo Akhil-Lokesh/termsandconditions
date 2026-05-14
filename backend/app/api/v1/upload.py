@@ -13,6 +13,7 @@ from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
+    Query,
     UploadFile,
     File,
     status,
@@ -40,6 +41,7 @@ from app.services.embedding_service import EmbeddingService
 from app.services.pinecone_service import PineconeService
 from app.services.claude_service import ClaudeService
 from app.utils.exceptions import DocumentProcessingError, EmbeddingError, PineconeError
+from app.core.rate_limit import limiter
 import logging
 
 logger = logging.getLogger(__name__)
@@ -66,11 +68,17 @@ def validate_file(file: UploadFile, content: bytes) -> float:
     Raises:
         HTTPException: If validation fails
     """
-    # Validate file type (PDF only)
+    # Validate file type (PDF only) — check both extension and magic bytes
     if not file.filename.endswith(".pdf"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only PDF files are supported. Please upload a .pdf file.",
+        )
+
+    if not content.startswith(b"%PDF-"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File is not a valid PDF (missing PDF header).",
         )
 
     file_size_mb = len(content) / (1024 * 1024)
@@ -83,6 +91,48 @@ def validate_file(file: UploadFile, content: bytes) -> float:
         )
 
     return file_size_mb
+
+
+# ============================================================================
+# HELPERS
+# ============================================================================
+
+_SERVICE_TYPE_KEYWORDS: dict = {
+    "social_media": ["social", "network", "post", "share", "follow", "friend", "profile", "feed", "creator", "tiktok", "instagram", "twitter", "facebook", "snapchat", "youtube", "linkedin"],
+    "ecommerce": ["shop", "store", "purchase", "buy", "sell", "marketplace", "cart", "checkout", "product", "merchant", "amazon", "ebay", "etsy", "shopify"],
+    "streaming": ["stream", "watch", "listen", "subscription", "playlist", "content", "video", "music", "netflix", "spotify", "disney", "hulu", "prime"],
+    "finance": ["bank", "payment", "transfer", "invest", "loan", "credit", "debit", "wallet", "transaction", "financial", "paypal", "stripe", "venmo"],
+    "saas": ["software", "platform", "api", "developer", "dashboard", "workspace", "enterprise", "b2b", "integration", "cloud"],
+    "gaming": ["game", "play", "player", "tournament", "virtual", "character", "score", "leaderboard"],
+    "healthcare": ["health", "medical", "patient", "doctor", "clinic", "prescription", "hipaa", "telehealth"],
+}
+
+
+def _infer_service_type(metadata: dict) -> str:
+    """Infer service type from extracted document metadata using keyword matching."""
+    text_to_search = " ".join([
+        metadata.get("company", ""),
+        metadata.get("company_name", ""),
+        metadata.get("document_type", ""),
+        metadata.get("service_description", ""),
+        metadata.get("industry", ""),
+    ]).lower()
+
+    if not text_to_search.strip():
+        return "general"
+
+    scores: dict[str, int] = {}
+    for stype, keywords in _SERVICE_TYPE_KEYWORDS.items():
+        hit = sum(1 for kw in keywords if kw in text_to_search)
+        if hit:
+            scores[stype] = hit
+
+    if not scores:
+        return "general"
+
+    best = max(scores, key=lambda k: scores[k])
+    logger.info(f"Inferred service type: {best} (scores: {scores})")
+    return best
 
 
 # ============================================================================
@@ -143,6 +193,7 @@ async def run_anomaly_detection_background(
 
         # Extract company name from metadata
         company_name = metadata.get("company", "Unknown")
+        service_type = _infer_service_type(metadata)
 
         # Detect anomalies - returns comprehensive report dict
         detector = AnomalyDetector(
@@ -154,7 +205,7 @@ async def run_anomaly_detection_background(
             document_id=document_id,
             sections=sections,
             company_name=company_name,
-            service_type="general",  # TODO: Auto-detect service type from metadata
+            service_type=service_type,
         )
 
         # Extract anomalies from the detection result
@@ -277,6 +328,7 @@ async def run_anomaly_detection_background(
     **Returns:** Document metadata with anomaly count and processing status
     """,
 )
+@limiter.limit("10/hour")
 async def upload_document(
     request: Request,
     background_tasks: BackgroundTasks,
@@ -299,7 +351,7 @@ async def upload_document(
     # Read and validate file
     content = await file.read()
     file_size_mb = validate_file(file, content)
-    logger.info(f"File validated: {file.filename} ({file_size_mb:.2f}MB)")
+    logger.info(f"File validated: {file.filename!r} ({file_size_mb:.2f}MB)")
 
     # Generate unique document ID
     doc_id = str(uuid.uuid4())
@@ -368,7 +420,7 @@ async def upload_document(
         logger.error(f"Document processing error: {e}")
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(e),
+            detail="Document processing failed. Please try again.",
         )
 
     except EmbeddingError as e:
@@ -389,7 +441,7 @@ async def upload_document(
         logger.error(f"Unexpected error during processing: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Document processing failed: {str(e)}",
+            detail="Document processing failed. Please try again.",
         )
 
     finally:
@@ -424,6 +476,7 @@ async def upload_document(
     **Returns:** Document metadata with anomaly count and processing status
     """,
 )
+@limiter.limit("10/hour")
 async def upload_text(
     request: Request,
     background_tasks: BackgroundTasks,
@@ -525,7 +578,7 @@ async def upload_text(
         logger.error(f"Text processing error: {e}")
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(e),
+            detail="Text processing failed. Please try again.",
         )
 
     except EmbeddingError as e:
@@ -546,7 +599,7 @@ async def upload_text(
         logger.error(f"Unexpected error during text processing: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Text processing failed: {str(e)}",
+            detail="Text processing failed. Please try again.",
         )
 
 
@@ -598,8 +651,8 @@ async def get_document(
     description="Get a list of all documents uploaded by the current user.",
 )
 async def list_documents(
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
@@ -690,5 +743,5 @@ async def delete_document(
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to delete document: {str(e)}",
+            detail="Failed to delete document. Please try again.",
         )

@@ -4,7 +4,7 @@ Anomaly detection endpoints.
 Provides access to detected anomalies with filtering and details.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
+from fastapi import APIRouter, Depends, HTTPException, Request, status, Query, Body
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Optional, Dict, Any
@@ -23,10 +23,56 @@ from app.schemas.anomaly import (
     PerformanceMetrics
 )
 from app.core.anomaly_detector import AnomalyDetector
+from app.core.rate_limit import limiter
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _anomaly_to_ranked_dict(anomaly: Anomaly) -> dict:
+    """Convert a DB Anomaly record to the RankedAnomaly dict format."""
+    severity = anomaly.severity or "medium"
+    severity_weights = {"critical": 6.0, "high": 3.5, "medium": 2.0, "low": 1.0}
+    weight = severity_weights.get(severity, 2.0)
+
+    indicators = anomaly.detected_indicators or []
+
+    # Derive confidence estimate from severity (DB does not persist per-clause calibration)
+    severity_confidence = {"critical": 0.9, "high": 0.8, "medium": 0.6, "low": 0.5}
+    conf = severity_confidence.get(severity, 0.5)
+    conf_tier = "HIGH" if conf >= 0.8 else "MODERATE" if conf >= 0.6 else "LOW"
+    tier_label = {"HIGH": "High Confidence", "MODERATE": "Moderate Confidence", "LOW": "Low Confidence"}
+
+    return {
+        "clause_number": anomaly.clause_number,
+        "clause_text": anomaly.clause_text or "",
+        "section": anomaly.section,
+        "severity": severity,
+        "risk_category": anomaly.risk_category or "other",
+        "prevalence": anomaly.prevalence,
+        "explanation": anomaly.explanation,
+        "consumer_impact": anomaly.consumer_impact,
+        "recommendation": anomaly.recommendation,
+        "detected_indicators": indicators,
+        "confidence_calibration": {
+            "raw_confidence": conf,
+            "calibrated_confidence": conf,
+            "confidence_tier": conf_tier,
+            "tier_label": tier_label[conf_tier],
+            "explanation": "Estimated from severity level; per-clause calibration not persisted to DB",
+            "adjustment": 0.0,
+        },
+        "ranking_score": weight * conf,
+        "scoring_breakdown": {
+            "severity_weight": weight,
+            "confidence": conf,
+            "user_relevance": 1.0,
+            "base_score": weight * conf,
+            "bonuses": {},
+            "bonus_total": 0.0,
+        },
+    }
 
 
 # NOTE: Static routes must be defined BEFORE dynamic routes like /{document_id}
@@ -66,6 +112,12 @@ async def get_performance_metrics(
 
     Returns comprehensive metrics for monitoring anomaly detection quality.
     """
+    if not getattr(current_user, "is_superuser", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required.",
+        )
+
     logger.info(f"Performance metrics requested by user: {current_user.id}")
 
     try:
@@ -93,7 +145,7 @@ async def get_performance_metrics(
         if detector.confidence_calibrator.is_fitted:
             # ECE is tracked internally but not directly accessible
             # For now, return None or implement getter
-            ece = None  # TODO: Add ECE getter to ConfidenceCalibrator
+            ece = None  # ECE not computed for cached results
 
         # Determine health status
         # Critical: dismissal rate > 40%
@@ -109,7 +161,7 @@ async def get_performance_metrics(
         # Calculate average processing time
         # This would ideally come from stored metrics
         # For now, use a placeholder
-        avg_processing_time = 500.0  # TODO: Track in database
+        avg_processing_time = 0.0  # Not tracked per-request
 
         metrics = PerformanceMetrics(
             total_documents_analyzed=total_documents,
@@ -139,7 +191,7 @@ async def get_performance_metrics(
         logger.error(f"Error fetching performance metrics: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch performance metrics: {str(e)}"
+            detail="Failed to fetch performance metrics."
         )
 
 
@@ -158,8 +210,10 @@ async def get_performance_metrics(
     Use this to refresh anomaly analysis after system improvements.
     """,
 )
+@limiter.limit("5/hour")
 async def reanalyze_document(
     document_id: str,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
@@ -215,10 +269,14 @@ async def reanalyze_document(
     db.commit()
     logger.info(f"Deleted {deleted_count} existing anomalies")
 
-    # Initialize services
-    embedding_service = get_embedding_service()
-    pinecone_service = get_pinecone_service()
-    await pinecone_service.initialize()
+    # Initialize services (these depend on app.state, accessed via request)
+    embedding_service = get_embedding_service(request)
+    pinecone_service = get_pinecone_service(request)
+    if pinecone_service is None or embedding_service is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Anomaly detection services are not available. Please try again shortly.",
+        )
 
     # Run anomaly detection
     detector = AnomalyDetector(
@@ -468,28 +526,22 @@ async def get_anomaly_detail(
 
     Returns full clause text (not truncated) and all metadata.
     """
-    anomaly = db.query(Anomaly).filter(Anomaly.id == anomaly_id).first()
-
-    if not anomaly:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Anomaly not found: {anomaly_id}",
-        )
-
-    # Verify user has access to this document
-    document = (
-        db.query(Document)
+    # Single JOIN query enforces ownership at fetch time — avoids fetch-then-authorize IDOR
+    # and prevents the response shape from distinguishing "not found" vs "forbidden".
+    anomaly = (
+        db.query(Anomaly)
+        .join(Document, Document.id == Anomaly.document_id)
         .filter(
-            Document.id == anomaly.document_id,
+            Anomaly.id == anomaly_id,
             Document.user_id == current_user.id,
         )
         .first()
     )
 
-    if not document:
+    if not anomaly:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not have access to this anomaly",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Anomaly not found: {anomaly_id}",
         )
 
     logger.info(f"Anomaly detail requested: {anomaly_id}")
@@ -541,6 +593,7 @@ async def get_anomaly_report(
     document_id: str,
     user_preferences: Optional[str] = Query(
         None,
+        max_length=2000,
         description="Optional JSON object with user preferences"
     ),
     force_reanalysis: bool = Query(
@@ -577,9 +630,103 @@ async def get_anomaly_report(
             detail=f"Document not found: {document_id}",
         )
 
+    from datetime import datetime, timezone  # noqa: PLC0415
+
+    # If analysis is still in progress, return 202
+    if document.processing_status == "analyzing_anomalies":
+        raise HTTPException(
+            status_code=status.HTTP_202_ACCEPTED,
+            detail="Anomaly detection is still in progress. Please try again shortly."
+        )
+
+    metadata = document.document_metadata or {}
+    company_name = metadata.get('company_name', 'Unknown')
+
+    # ─── DEFAULT PATH: Read pre-computed results from DB ───
+    if document.processing_status == "completed" and not force_reanalysis:
+        try:
+            anomalies = (
+                db.query(Anomaly)
+                .filter(Anomaly.document_id == document_id)
+                .all()
+            )
+
+            if not anomalies:
+                logger.warning(f"Document {document_id} is 'completed' but has 0 anomalies in DB")
+
+            high_alerts = [
+                _anomaly_to_ranked_dict(a) for a in anomalies
+                if a.severity in ("critical", "high")
+            ]
+            medium_alerts = [
+                _anomaly_to_ranked_dict(a) for a in anomalies
+                if a.severity == "medium"
+            ]
+            low_alerts = [
+                _anomaly_to_ranked_dict(a) for a in anomalies
+                if a.severity == "low"
+            ]
+
+            total = len(anomalies)
+            risk_score = document.risk_score or 5.0
+
+            logger.info(
+                f"Report from DB: {total} anomalies "
+                f"({len(high_alerts)} high, {len(medium_alerts)} medium, {len(low_alerts)} low), "
+                f"risk score: {risk_score:.1f}/10"
+            )
+
+            return {
+                "document_id": document_id,
+                "company_name": company_name,
+                "analysis_date": (
+                    document.updated_at.isoformat()
+                    if hasattr(document, 'updated_at') and document.updated_at
+                    else datetime.now(timezone.utc).isoformat()
+                ),
+                "overall_risk_score": max(1.0, min(risk_score, 10.0)),
+                "high_severity_alerts": high_alerts,
+                "medium_severity_alerts": medium_alerts,
+                "low_severity_alerts": low_alerts,
+                "suppressed_alerts_count": 0,
+                "total_anomalies_detected": total,
+                "total_alerts_shown": total,
+                "compound_risks": [],
+                "ranking_metadata": {
+                    "total_detected": total,
+                    "total_shown": total,
+                    "total_suppressed": 0,
+                    "suppression_rate": 0.0,
+                    "avg_score": 0.0,
+                    "top_score": 0.0,
+                    "top_categories": [],
+                    "alert_budget_applied": False,
+                    "user_preferences_applied": False
+                },
+                "pipeline_performance": {
+                    "stage1_detections": total,
+                    "stage2_passed": total,
+                    "stage2_filtered_out": 0,
+                    "stage3_clustered": total,
+                    "stage4_compounds": 0,
+                    "stage5_calibrated": total,
+                    "stage6_ranked": total,
+                    "total_clauses_analyzed": document.clause_count or 0,
+                    "total_processing_time_ms": 0.0
+                },
+                "competitive_benchmark": None
+            }
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error reading DB report, falling through to reanalysis: {e}", exc_info=True)
+
+    # ─── REANALYSIS PATH: Run pipeline using DB clauses ───
     try:
-        # Parse user preferences if provided
         import json
+        from app.models.clause import Clause
+
         prefs = None
         if user_preferences:
             try:
@@ -590,140 +737,96 @@ async def get_anomaly_report(
                     detail="Invalid user_preferences JSON format"
                 )
 
-        # Initialize detector
-        detector = AnomalyDetector()
+        # Load clauses from DB (properly extracted during upload)
+        db_clauses = (
+            db.query(Clause)
+            .filter(Clause.document_id == document_id)
+            .all()
+        )
 
-        # Set user preferences if provided
+        if db_clauses:
+            # Build sections from DB clauses (same pattern as reanalyze_document)
+            sections_dict: Dict[str, Any] = {}
+            for clause in db_clauses:
+                section_name = clause.section or "Unknown Section"
+                if section_name not in sections_dict:
+                    sections_dict[section_name] = {
+                        "title": section_name,
+                        "clauses": []
+                    }
+                sections_dict[section_name]["clauses"].append({
+                    "id": clause.clause_number,
+                    "text": clause.text
+                })
+            sections = list(sections_dict.values())
+            logger.info(f"Built {len(sections)} sections from {len(db_clauses)} DB clauses")
+        else:
+            # Fallback: parse raw text (should rarely happen)
+            if not document.text:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Document has no content to analyze"
+                )
+            text_clauses = [
+                {"clause_number": str(i+1), "text": text.strip()}
+                for i, text in enumerate(document.text.split('\n\n'))
+                if text.strip()
+            ]
+            if not text_clauses:
+                text_clauses = [
+                    {"clause_number": str(i+1), "text": text.strip()}
+                    for i, text in enumerate(document.text.split('\n'))
+                    if text.strip()
+                ]
+            sections = [
+                {
+                    'title': f"Section {c['clause_number']}",
+                    'clauses': [{'text': c['text'], 'clause_number': c['clause_number']}]
+                }
+                for c in text_clauses
+            ]
+            logger.warning(f"No DB clauses found, falling back to text split: {len(sections)} sections")
+
+        service_type = metadata.get('document_type', 'general')
+
+        detector = AnomalyDetector()
         if prefs:
             detector.set_user_preferences(prefs)
 
-        # Get document text content
-        if not document.text:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Document has no content to analyze"
-            )
-
-        # Parse document text into clauses
-        # Split by double newlines for paragraphs, or single newlines for lines
-        clauses = [
-            {"clause_number": str(i+1), "text": text.strip()}
-            for i, text in enumerate(document.text.split('\n\n'))
-            if text.strip()
-        ]
-
-        # If no clauses found with double newlines, try single newlines
-        if not clauses:
-            clauses = [
-                {"clause_number": str(i+1), "text": text.strip()}
-                for i, text in enumerate(document.text.split('\n'))
-                if text.strip()
-            ]
-
-        if not clauses:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No clauses found in document"
-            )
-
-        # Get metadata from document
-        metadata = document.document_metadata or {}
-        company_name = metadata.get('company_name', 'Unknown')
-        service_type = metadata.get('document_type', 'general')
-
-        # Get document context
-        document_context = {
-            'industry': metadata.get('industry'),
-            'service_type': service_type,
-            'is_change': False
-        }
-
-        # Convert clauses to sections format expected by detector
-        # The detector expects sections with a 'clauses' array inside each section
-        sections = [
-            {
-                'title': f"Section {c['clause_number']}",
-                'clauses': [{'text': c['text'], 'clause_number': c['clause_number'], 'id': c['clause_number']}]
-            }
-            for c in clauses
-        ]
-
-        # Run complete 6-stage pipeline (async method)
-        logger.info(f"Running 6-stage pipeline on {len(sections)} sections")
+        logger.info(f"Running 6-stage pipeline on {len(sections)} sections (force_reanalysis={force_reanalysis})")
         report = await detector.detect_anomalies(
             document_id=document_id,
             sections=sections,
             company_name=company_name,
             service_type=service_type,
-            document_context=document_context
+            document_context={
+                'industry': metadata.get('industry'),
+                'service_type': service_type,
+                'is_change': False
+            }
         )
 
-        # Handle both dict and list return types
-        if isinstance(report, list):
-            # Convert list of anomalies to report format
-            high_alerts = [a for a in report if a.get('severity') == 'high']
-            medium_alerts = [a for a in report if a.get('severity') == 'medium']
-            low_alerts = [a for a in report if a.get('severity') == 'low']
-
-            total_shown = len(report)
-            risk_score = sum(
-                3 if a.get('severity') == 'high' else 2 if a.get('severity') == 'medium' else 1
-                for a in report
-            ) / max(len(report), 1) * 3.33
-
-            logger.info(
-                f"Pipeline complete: {total_shown} alerts, "
-                f"risk score: {min(risk_score, 10):.1f}/10"
-            )
-
-            from datetime import datetime
-            return {
-                "document_id": document_id,
-                "company_name": company_name,
-                "analysis_date": datetime.utcnow().isoformat(),
-                "high_severity_alerts": high_alerts,
-                "medium_severity_alerts": medium_alerts,
-                "low_severity_alerts": low_alerts,
-                "overall_risk_score": min(risk_score, 10),
-                "total_anomalies_detected": len(report),
-                "total_alerts_shown": total_shown,
-                "suppressed_alerts_count": 0,
-                "compound_risks": [],
-                "ranking_metadata": {
-                    "total_detected": len(report),
-                    "total_shown": total_shown,
-                    "total_suppressed": 0,
-                    "suppression_rate": 0.0,
-                    "avg_score": 0.0,
-                    "top_score": 0.0,
-                    "top_categories": [],
-                    "alert_budget_applied": False,
-                    "user_preferences_applied": False
-                },
-                "pipeline_performance": {
-                    "stage1_detections": len(report),
-                    "stage2_filtered": len(report),
-                    "stage3_clustered": len(report),
-                    "stage4_compounds": 0,
-                    "stage5_calibrated": len(report),
-                    "stage6_ranked": len(report),
-                    "total_clauses_analyzed": 0,
-                    "total_processing_time_ms": 0.0
-                },
-                "competitive_benchmark": None
-            }
-        else:
+        if isinstance(report, dict):
             logger.info(
                 f"Pipeline complete: {report.get('total_alerts_shown', 0)}/{report.get('total_anomalies_detected', 0)} "
                 f"alerts shown, risk score: {report.get('overall_risk_score', 0):.1f}/10"
             )
             return report
+        else:
+            # Shouldn't happen, but handle gracefully
+            logger.warning(f"Unexpected report type: {type(report)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Pipeline returned unexpected format"
+            )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error generating anomaly report: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate anomaly report: {str(e)}"
+            detail="Failed to generate anomaly report. Please try again."
         )
 
 
@@ -764,29 +867,18 @@ async def submit_feedback(
     """
     logger.info(f"Feedback received for anomaly: {anomaly_id}")
 
-    # Verify anomaly exists and user has access
-    anomaly = db.query(Anomaly).filter(Anomaly.id == anomaly_id).first()
+    # Single JOIN query prevents IDOR timing oracle (no two-step fetch-then-authorize)
+    anomaly = (
+        db.query(Anomaly)
+        .join(Document, Document.id == Anomaly.document_id)
+        .filter(Anomaly.id == anomaly_id, Document.user_id == current_user.id)
+        .first()
+    )
 
     if not anomaly:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Anomaly not found: {anomaly_id}"
-        )
-
-    # Verify user has access to this document
-    document = (
-        db.query(Document)
-        .filter(
-            Document.id == anomaly.document_id,
-            Document.user_id == current_user.id,
-        )
-        .first()
-    )
-
-    if not document:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not have access to this anomaly"
+            detail="Anomaly not found"
         )
 
     try:
@@ -824,7 +916,8 @@ async def submit_feedback(
 
         # Log optional text feedback
         if feedback.feedback_text:
-            logger.info(f"User feedback text: {feedback.feedback_text[:200]}")
+            safe_text = repr(feedback.feedback_text[:200])
+            logger.info(f"User feedback text: {safe_text}")
 
         # Get current stats
         from app.schemas.anomaly import FeedbackStats
@@ -842,5 +935,5 @@ async def submit_feedback(
         logger.error(f"Error collecting feedback: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to collect feedback: {str(e)}"
+            detail="Failed to collect feedback. Please try again."
         )
