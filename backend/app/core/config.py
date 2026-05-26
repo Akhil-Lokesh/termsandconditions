@@ -23,8 +23,8 @@ class Settings(BaseSettings):
 
     # Anthropic Claude Configuration
     ANTHROPIC_API_KEY: str
-    CLAUDE_MODEL: str = "claude-sonnet-4.5-20250514"
-    CLAUDE_MODEL_FAST: str = "claude-4.5-haiku-20250514"
+    CLAUDE_MODEL: str = "claude-sonnet-4-5"
+    CLAUDE_MODEL_FAST: str = "claude-haiku-4-5-20251001"
     CLAUDE_MAX_RETRIES: int = 3
     CLAUDE_TIMEOUT: int = 60
 
