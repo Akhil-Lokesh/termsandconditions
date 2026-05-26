@@ -29,9 +29,11 @@ MAX_INPUT_TOKENS = 80000
 # 3 extra Claude calls per critical, so a 5-cap means at most 15 extra calls/doc.
 MAX_CRITICAL_VOTES_PER_DOC = 5
 
-# Master feature flag. Default OFF — flip on per env when the ablation evidence
-# (`evals/experiments/vote_ablation.py`) shows a kappa lift > 0.02.
-SELF_CONSISTENCY_ENABLED = os.getenv("SELF_CONSISTENCY_CRITICAL", "false").lower() == "true"
+# Master feature flag. Default ON since the 2026-05-26 ablation
+# (`evals/vote_ablation_report.json`, N=30) showed kappa lift +0.06 with
+# $0.00 cost delta — well above the 0.02 threshold from nxt.md Layer 5.
+# Override with SELF_CONSISTENCY_CRITICAL=false in env to disable per env.
+SELF_CONSISTENCY_ENABLED = os.getenv("SELF_CONSISTENCY_CRITICAL", "true").lower() == "true"
 
 # Number of voting calls per critical finding. Majority-of-3 is the smallest
 # odd-N that yields a real majority signal; 5 doubles cost with little expected gain.
