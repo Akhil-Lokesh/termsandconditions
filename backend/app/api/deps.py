@@ -4,7 +4,7 @@ API dependencies for dependency injection.
 Provides dependency functions for:
 - Database session management
 - User authentication
-- Service instance retrieval (OpenAI, Pinecone, Cache)
+- Service instance retrieval (Claude, Embedding, Pinecone, Cache)
 """
 
 import logging
@@ -17,7 +17,8 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db.session import get_db
 from app.models.user import User
-from app.services.openai_service import OpenAIService
+from app.services.claude_service import ClaudeService
+from app.services.embedding_service import EmbeddingService
 from app.services.pinecone_service import PineconeService
 from app.services.cache_service import CacheService
 
@@ -98,25 +99,37 @@ async def get_current_active_user(
 # ============================================================================
 
 
-def get_openai_service(request: Request) -> OpenAIService:
+def get_claude_service(request: Request) -> ClaudeService:
     """
-    Get OpenAI service instance from app state.
+    Get Claude service instance from app state.
 
     Args:
         request: FastAPI request object
 
     Returns:
-        OpenAI service instance
+        Claude service instance
 
     Raises:
         HTTPException: If service not initialized
     """
-    service = request.app.state.openai
+    service = request.app.state.claude
     if service is None:
-        logger.error("OpenAI service not initialized")
+        logger.error("Claude service not initialized")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="OpenAI service not available",
+            detail="Claude service not available",
+        )
+    return service
+
+
+def get_embedding_service(request: Request) -> EmbeddingService:
+    """Get embedding service instance from app state."""
+    service = request.app.state.embedding
+    if service is None:
+        logger.error("Embedding service not initialized")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Embedding service not available",
         )
     return service
 

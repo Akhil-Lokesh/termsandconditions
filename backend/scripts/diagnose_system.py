@@ -2,7 +2,7 @@
 System diagnostic script.
 
 Checks:
-1. Service connectivity (OpenAI, Pinecone, Redis, PostgreSQL)
+1. Service connectivity (Claude, Pinecone, Redis, PostgreSQL)
 2. Baseline corpus status
 3. Configuration validation
 4. API endpoints health
@@ -16,7 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.core.config import settings
-from app.services.openai_service import OpenAIService
+from app.services.claude_service import ClaudeService
 from app.services.pinecone_service import PineconeService
 from app.services.cache_service import CacheService
 from sqlalchemy import create_engine, text
@@ -26,15 +26,15 @@ logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
 
-async def check_openai():
-    """Check OpenAI connectivity."""
+async def check_claude():
+    """Check Claude connectivity."""
     try:
-        openai = OpenAIService()
-        embedding = await openai.create_embedding("test")
-        logger.info("✓ OpenAI: Connected (embedding dimension: %d)", len(embedding))
+        claude = ClaudeService()
+        response = await claude.create_completion("Say 'test' and nothing else.", max_tokens=10)
+        logger.info("✓ Claude: Connected (response: %s)", response[:50])
         return True
     except Exception as e:
-        logger.error("✗ OpenAI: %s", e)
+        logger.error("✗ Claude: %s", e)
         return False
 
 
@@ -135,15 +135,15 @@ def check_config():
     logger.info("\n=== Configuration ===")
     logger.info("Environment: %s", settings.ENVIRONMENT)
     logger.info("Debug: %s", settings.DEBUG)
-    logger.info("OpenAI Model: %s", settings.OPENAI_MODEL_GPT4)
-    logger.info("Embedding Model: %s", settings.OPENAI_EMBEDDING_MODEL)
+    logger.info("Claude Model: %s", settings.CLAUDE_MODEL)
+    logger.info("Claude Fast Model: %s", settings.CLAUDE_MODEL_FAST)
     logger.info("Max Upload Size: %d MB", settings.MAX_FILE_SIZE_MB)
 
     # Check API keys are set
     issues = []
 
-    if not settings.OPENAI_API_KEY or settings.OPENAI_API_KEY.startswith("sk-proj-your"):
-        issues.append("OpenAI API key not configured")
+    if not settings.ANTHROPIC_API_KEY or settings.ANTHROPIC_API_KEY.startswith("sk-ant-your"):
+        issues.append("Anthropic API key not configured")
 
     if not settings.PINECONE_API_KEY or settings.PINECONE_API_KEY.startswith("pcsk_your"):
         issues.append("Pinecone API key not configured")
@@ -172,7 +172,7 @@ async def main():
     logger.info("\n=== Service Connectivity ===")
 
     # Service checks
-    openai_ok = await check_openai()
+    claude_ok = await check_claude()
     pinecone_ok = await check_pinecone()
     redis_ok = await check_redis()
     db_ok = check_database()
@@ -182,7 +182,7 @@ async def main():
     logger.info("Summary")
     logger.info("="*60)
 
-    all_critical_ok = openai_ok and pinecone_ok and db_ok and config_ok
+    all_critical_ok = claude_ok and pinecone_ok and db_ok and config_ok
 
     if all_critical_ok:
         logger.info("✓ All critical services operational!")

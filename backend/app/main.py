@@ -8,12 +8,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.core.config import settings
-from app.services.openai_service import OpenAIService
+from app.core.rate_limit import limiter
+from app.services.claude_service import ClaudeService
+from app.services.embedding_service import EmbeddingService
 from app.services.pinecone_service import PineconeService
 from app.services.cache_service import CacheService
 
@@ -25,13 +26,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# Initialize rate limiter
-limiter = Limiter(
-    key_func=get_remote_address,
-    default_limits=[f"{settings.RATE_LIMIT_PER_HOUR}/hour"],
-)
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -40,7 +34,8 @@ async def lifespan(app: FastAPI):
     FAIL-FAST STRATEGY:
         - Redis (optional): Continues with warning if unavailable
         - Pinecone (required): Fails startup if unavailable
-        - OpenAI (required): Fails startup if unavailable
+        - Claude (required): Fails startup if unavailable
+        - Embeddings (required): Fails startup if unavailable
 
     This prevents silent failures that cause crashes in endpoints.
     """
@@ -69,16 +64,46 @@ async def lifespan(app: FastAPI):
         init_failures.append(f"Pinecone: {e}")
         app.state.pinecone = None
 
-    # Initialize OpenAI service (REQUIRED)
+    # Initialize Claude service (REQUIRED - for LLM completions)
     try:
-        app.state.openai = OpenAIService(cache_service=app.state.cache)
-        # Test with a simple embedding to verify API key works
-        test_embedding = await app.state.openai.create_embedding("test")
-        logger.info("✓ OpenAI service initialized and tested")
+        app.state.claude = ClaudeService(cache_service=app.state.cache)
+        # Test with a simple completion to verify API key works
+        test_response = await app.state.claude.create_completion("Say 'ok'", max_tokens=10)
+        logger.info("✓ Claude service initialized and tested")
     except Exception as e:
-        logger.error(f"✗ OpenAI initialization failed: {e}")
-        init_failures.append(f"OpenAI: {e}")
-        app.state.openai = None
+        logger.error(f"✗ Claude initialization failed: {e}")
+        init_failures.append(f"Claude: {e}")
+        app.state.claude = None
+
+    # Initialize local embedding service (REQUIRED)
+    try:
+        app.state.embedding = EmbeddingService()
+        await app.state.embedding.initialize()
+        # Test with a simple embedding
+        test_embedding = await app.state.embedding.create_embedding("test")
+        logger.info(f"✓ Local embedding service initialized ({len(test_embedding)} dimensions)")
+    except Exception as e:
+        logger.error(f"✗ Embedding service initialization failed: {e}")
+        init_failures.append(f"Embedding: {e}")
+        app.state.embedding = None
+
+    # Hydrate active learning buffer from DB (feature-flagged via
+    # ACTIVE_LEARNING_PERSIST). The ALM is owned by AnomalyDetector instances,
+    # so actual hydration runs lazily inside AnomalyDetector.__init__ when the
+    # detector is first constructed. This log line documents the pathway.
+    try:
+        from app.core.active_learning_manager import _persist_enabled
+        if _persist_enabled():
+            logger.info(
+                "Active learning persistence enabled — hydration deferred to "
+                "first AnomalyDetector instance"
+            )
+        else:
+            logger.info(
+                "Active learning persistence disabled (ACTIVE_LEARNING_PERSIST!=true)"
+            )
+    except Exception as e:
+        logger.warning(f"Active learning hydration check skipped: {e}")
 
     # FAIL FAST if required services failed
     if init_failures:
@@ -103,9 +128,8 @@ async def lifespan(app: FastAPI):
         await app.state.cache.disconnect()
         logger.info("✓ Redis disconnected")
 
-    if app.state.openai:
-        await app.state.openai.close()
-        logger.info("✓ OpenAI service closed")
+    # Embedding service doesn't need explicit closing
+    logger.info("✓ Embedding service closed")
 
     if app.state.pinecone:
         await app.state.pinecone.close()
@@ -130,9 +154,15 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.BACKEND_CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "Accept"],
 )
+
+# Add ProxyHeadersMiddleware so X-Forwarded-For from trusted proxies is used
+# for rate limiting. trusted_hosts restricts which upstream IPs are trusted.
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+trusted_proxy = getattr(settings, "TRUSTED_PROXY_IPS", "127.0.0.1")
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=trusted_proxy)
 
 # Add rate limiting
 app.state.limiter = limiter
@@ -162,7 +192,7 @@ async def health_check_services():
 
     Returns service availability status. Use this to verify:
     - API is accepting requests
-    - Required services (OpenAI, Pinecone) are operational
+    - Required services (Embedding, Pinecone, Claude) are operational
     - Optional services (Redis cache) are available
 
     Returns:
@@ -173,12 +203,13 @@ async def health_check_services():
     # Note: app.state is available via request context in route handlers
     # Using app directly since we're in the same module
     services = {
-        "openai": app.state.openai is not None,
+        "embedding": app.state.embedding is not None,
         "pinecone": app.state.pinecone is not None,
+        "claude": app.state.claude is not None,
         "cache": app.state.cache is not None,
     }
 
-    all_required_healthy = services["openai"] and services["pinecone"]
+    all_required_healthy = services["embedding"] and services["pinecone"] and services["claude"]
 
     return {
         "status": "healthy" if all_required_healthy else "degraded",
@@ -188,15 +219,6 @@ async def health_check_services():
             if all_required_healthy
             else "Some required services unavailable"
         ),
-        "details": {
-            "openai": "✓ Connected" if services["openai"] else "✗ Unavailable",
-            "pinecone": "✓ Connected" if services["pinecone"] else "✗ Unavailable",
-            "cache": (
-                "✓ Connected"
-                if services["cache"]
-                else "○ Optional (running without cache)"
-            ),
-        },
     }
 
 
@@ -211,7 +233,10 @@ async def root():
 
 
 # Include API routers
-from app.api.v1 import auth, upload, query, anomalies, compare, gpt5_analysis
+from app.api.v1 import auth, upload, query, anomalies, compare
+
+if settings.DEBUG or settings.ENVIRONMENT == "development":
+    from app.api.v1 import debug
 
 app.include_router(
     auth.router,
@@ -243,11 +268,12 @@ app.include_router(
     tags=["Comparison"],
 )
 
-app.include_router(
-    gpt5_analysis.router,
-    prefix=f"{settings.API_V1_PREFIX}/gpt5",
-    tags=["GPT-5 Analysis"],
-)
+if settings.DEBUG or settings.ENVIRONMENT == "development":
+    app.include_router(
+        debug.router,
+        prefix=f"{settings.API_V1_PREFIX}/debug",
+        tags=["Debug"],
+    )
 
 logger.info("✓ API routers registered")
 

@@ -13,8 +13,7 @@ psycopg2-binary==2.9.9
 supabase==2.3.0
 storage3==0.7.0
 
-# AI Services (OpenAI handles embeddings - no need for local ML)
-openai==1.10.0
+# AI Services
 pinecone-client==3.0.2
 
 # Cache
@@ -58,3 +57,23 @@ reportlab==4.0.9
 # Scientific (lightweight - for any basic stats needed)
 numpy==1.26.4
 scikit-learn==1.3.2
+
+# Clustering & Dimensionality Reduction (for anomaly clustering)
+umap-learn==0.5.7
+hdbscan==0.8.40
+
+# Semantic Analysis (for semantic anomaly detection)
+sentence-transformers==5.0.0
+torch==2.6.0
+
+# Anthropic Claude API
+anthropic==0.43.0
+
+# Eval datasets (Layer 3) — only needed when running ingesters/evals
+datasets>=2.14.0
+requests>=2.31.0
+
+# Eval judge (Layer 4) — cross-family LLM-as-judge checker (OpenAI GPT-4o)
+# Only imported when OpenAIJudge is instantiated; ImportError handled gracefully.
+openai>=1.0.0
+

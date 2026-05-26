@@ -1,0 +1,168 @@
+{
+  "schema_version": "1.0",
+  "description": "Hand-labeled seed clauses for the T&C anomaly detection eval harness. Inspired by CUAD (Atticus Project) and ContractEval-style examples. Expand with real CUAD subset and ContractEval before gating CI.",
+  "clauses": [
+    {
+      "clause_id": "eval-001",
+      "section": "Termination",
+      "text": "We may terminate your account at any time, without notice, for any reason or no reason whatsoever, in our sole discretion.",
+      "expected_severity": "high",
+      "expected_risk_category": "termination",
+      "notes": "One-sided termination with no notice and no cause — a classic 'high' per the system rubric.",
+      "source": "synthetic-cuad-inspired"
+    },
+    {
+      "clause_id": "eval-002",
+      "section": "User Content",
+      "text": "To the maximum extent permitted by applicable law, you hereby waive any and all moral rights in any User Content you submit, post, or display on or through the Service.",
+      "expected_severity": "critical",
+      "expected_risk_category": "rights",
+      "notes": "Moral rights waiver is explicitly called out as critical/high in the rubric.",
+      "source": "synthetic-cuad-inspired"
+    },
+    {
+      "clause_id": "eval-003",
+      "section": "Governing Law",
+      "text": "This Agreement shall be governed by and construed in accordance with the laws of the State of Delaware, without regard to its conflict of laws principles.",
+      "expected_severity": "low",
+      "expected_risk_category": "other",
+      "notes": "Standard governing-law clause; rubric labels these 'low'.",
+      "source": "cuad-style"
+    },
+    {
+      "clause_id": "eval-004",
+      "section": "Dispute Resolution",
+      "text": "You and the Company agree that any dispute, claim, or controversy arising out of or relating to these Terms shall be resolved exclusively through final and binding individual arbitration, and you waive any right to participate in a class action or class-wide arbitration.",
+      "expected_severity": "high",
+      "expected_risk_category": "arbitration",
+      "notes": "Forced arbitration with class action waiver — rubric example for 'high'.",
+      "source": "cuad-style"
+    },
+    {
+      "clause_id": "eval-005",
+      "section": "License Grant",
+      "text": "You grant the Company a worldwide, perpetual, irrevocable, royalty-free, sublicensable, and transferable license to use, reproduce, modify, distribute, prepare derivative works of, publicly display, and publicly perform your name, image, likeness, and voice in any media now known or hereafter developed.",
+      "expected_severity": "high",
+      "expected_risk_category": "content",
+      "notes": "Perpetual irrevocable license covering NIL — rubric explicitly cites this as 'high'.",
+      "source": "cuad-style"
+    },
+    {
+      "clause_id": "eval-006",
+      "section": "Modifications",
+      "text": "We reserve the right to modify these Terms at any time, in our sole discretion. Continued use of the Service after such changes constitutes your acceptance of the new Terms.",
+      "expected_severity": "medium",
+      "expected_risk_category": "modification",
+      "notes": "Unilateral modification is common across major tech ToS — calibrated to 'medium'.",
+      "source": "synthetic-cuad-inspired"
+    },
+    {
+      "clause_id": "eval-007",
+      "section": "Disclaimer of Warranties",
+      "text": "THE SERVICE IS PROVIDED ON AN \"AS IS\" AND \"AS AVAILABLE\" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION THE IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.",
+      "expected_severity": "medium",
+      "expected_risk_category": "liability",
+      "notes": "Broad warranty disclaimer — common, calibrated to 'medium'.",
+      "source": "cuad-style"
+    },
+    {
+      "clause_id": "eval-008",
+      "section": "Limitation of Liability",
+      "text": "In no event shall the Company, its officers, directors, employees, or agents be liable to you for any indirect, incidental, special, consequential, or punitive damages, including without limitation loss of profits or data.",
+      "expected_severity": "low",
+      "expected_risk_category": "liability",
+      "notes": "Standard limitation-of-liability clause; rubric treats standard versions as 'low'.",
+      "source": "cuad-style"
+    },
+    {
+      "clause_id": "eval-009",
+      "section": "Indemnification",
+      "text": "You agree to defend, indemnify, and hold harmless the Company and its affiliates from and against any and all claims, damages, obligations, losses, liabilities, costs, and expenses arising from your use of the Service or violation of these Terms.",
+      "expected_severity": "medium",
+      "expected_risk_category": "liability",
+      "notes": "Broad indemnification — common across tech ToS, rubric calibrates to 'medium'.",
+      "source": "cuad-style"
+    },
+    {
+      "clause_id": "eval-010",
+      "section": "Privacy",
+      "text": "We may sell, transfer, or otherwise share your personal information, including your name, email, phone number, location data, and browsing history, with third-party data brokers and advertisers without further notice to you.",
+      "expected_severity": "critical",
+      "expected_risk_category": "privacy",
+      "notes": "Selling personal data to third parties without consent — rubric example for 'critical'.",
+      "source": "synthetic-cuad-inspired"
+    },
+    {
+      "clause_id": "eval-011",
+      "section": "Biometric Data",
+      "text": "By using the Service, you consent to the Company's collection, storage, and use of biometric identifiers including facial geometry, voiceprints, and fingerprints, for any purpose we deem appropriate.",
+      "expected_severity": "critical",
+      "expected_risk_category": "data",
+      "notes": "Biometric collection with broad use — rubric example for 'critical'.",
+      "source": "synthetic-cuad-inspired"
+    },
+    {
+      "clause_id": "eval-012",
+      "section": "Statute of Limitations",
+      "text": "Any claim or cause of action you may have arising out of or relating to these Terms or the Service must be filed within ninety (90) days after such claim or cause of action arose, or be forever barred.",
+      "expected_severity": "high",
+      "expected_risk_category": "arbitration",
+      "notes": "Shortened statute of limitations vs the usual multi-year period — rubric 'high'.",
+      "source": "cuad-style"
+    },
+    {
+      "clause_id": "eval-013",
+      "section": "Auto-Renewal",
+      "text": "Your subscription will automatically renew at the end of each billing cycle at the then-current rate, unless you cancel at least 24 hours before renewal.",
+      "expected_severity": "medium",
+      "expected_risk_category": "payment",
+      "notes": "Auto-renewal — common, rubric calibrates to 'medium'.",
+      "source": "cuad-style"
+    },
+    {
+      "clause_id": "eval-014",
+      "section": "Content License",
+      "text": "By submitting User Content, you grant the Company a non-exclusive, royalty-free, worldwide license to use, host, and display such content for the purpose of operating and improving the Service.",
+      "expected_severity": "low",
+      "expected_risk_category": "content",
+      "notes": "Narrow operational license — typical and low-risk.",
+      "source": "synthetic-cuad-inspired"
+    },
+    {
+      "clause_id": "eval-015",
+      "section": "Automated Analysis",
+      "text": "We may use automated systems to scan, analyze, and review all content you submit, transmit, or receive through the Service, including private messages and email content, for any purpose.",
+      "expected_severity": "medium",
+      "expected_risk_category": "surveillance",
+      "notes": "Automated scanning of private content — flagged as 'medium' per rubric's calibration rule.",
+      "source": "synthetic-cuad-inspired"
+    },
+    {
+      "clause_id": "eval-016",
+      "section": "Feedback",
+      "text": "If you provide any feedback, suggestions, or ideas to the Company, you grant us a perpetual, irrevocable, royalty-free license to use such feedback for any purpose without compensation to you.",
+      "expected_severity": "low",
+      "expected_risk_category": "rights",
+      "notes": "Feedback/ideas perpetual license — rubric example for 'low'.",
+      "source": "cuad-style"
+    },
+    {
+      "clause_id": "eval-017",
+      "section": "Data Retention",
+      "text": "We may retain your account data, including content you have deleted, for up to seven (7) years after account termination for legal and operational purposes.",
+      "expected_severity": "medium",
+      "expected_risk_category": "data",
+      "notes": "Post-termination retention — flagged in rubric's 'often missed' list, calibrated to 'medium'.",
+      "source": "synthetic-cuad-inspired"
+    },
+    {
+      "clause_id": "eval-018",
+      "section": "IP Claims",
+      "text": "We may disclose your identity, contact information, and account details to any party that asserts a good-faith claim of intellectual property infringement against you.",
+      "expected_severity": "low",
+      "expected_risk_category": "privacy",
+      "notes": "Identity disclosure to IP claimants — rubric example for 'low'.",
+      "source": "cuad-style"
+    }
+  ]
+}

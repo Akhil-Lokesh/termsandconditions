@@ -16,7 +16,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.services.openai_service import OpenAIService
+from app.services.embedding_service import EmbeddingService
 from app.services.pinecone_service import PineconeService
 from app.core.config import settings
 
@@ -121,10 +121,10 @@ def test_upload_complete_pipeline(client, auth_headers, test_pdf_path):
 @pytest.mark.asyncio
 async def test_services_initialized():
     """Test that all services initialize correctly."""
-    # Test OpenAI
-    openai = OpenAIService()
-    embedding = await openai.create_embedding("test")
-    assert len(embedding) == 1536  # text-embedding-3-small dimension
+    # Test Embedding Service
+    embedding_service = EmbeddingService()
+    embedding = await embedding_service.create_embedding("test")
+    assert len(embedding) == 384  # all-MiniLM-L6-v2 dimension
     
     # Test Pinecone
     pinecone = PineconeService()

@@ -112,3 +112,37 @@ dump.rdb
 *_backup.py
 *_original.py
 *_improved.py
+
+# Claude Code
+.claude/
+
+# Generated analysis files
+CODEBASE_ANALYSIS.md
+COMPREHENSIVE_SYSTEM_ANALYSIS.md
+DETECTION_FAILURE_ROOT_CAUSE.md
+refactoring-patterns/
+
+# Detection cache
+backend/app/core/.cache/
+
+# Eval datasets (downloaded, not committed) — regenerate via the ingester scripts.
+backend/evals/datasets/_raw/
+backend/evals/datasets/*.jsonl
+# Exceptions: the hand-labeled gold holdout (cannot be regenerated) and its
+# sampling queue (deterministic, but worth committing for reproducibility).
+!backend/evals/datasets/gold_holdout.jsonl
+!backend/evals/datasets/gold_holdout_queue.jsonl
+# Backups + temp files from the labelling scripts are never committed.
+backend/evals/datasets/*.bak
+backend/evals/datasets/.*.tmp
+
+# Eval judge SQLite verdict cache + disagreement log (Layer 4) — generated at runtime,
+# not committed. The cache is keyed by clause+prediction+judge_model hash so it's safe
+# to delete and rebuild any time.
+backend/evals/judge/cache.db
+backend/evals/judge/*.db
+backend/evals/judge/judge_disagreements.jsonl
+
+# Gemini agreement-run cache (raw API responses) — regenerate at any time.
+backend/evals/_cache/
+

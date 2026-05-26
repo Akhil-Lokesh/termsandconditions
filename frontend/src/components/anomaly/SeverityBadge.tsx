@@ -1,38 +1,46 @@
-import { Badge } from '@/components/ui/badge';
-import { AlertTriangle, AlertCircle, Info } from 'lucide-react';
+import { AlertTriangle, AlertCircle, Info, ShieldAlert } from 'lucide-react';
 
 interface SeverityBadgeProps {
-  severity: 'low' | 'medium' | 'high';
+  severity: 'low' | 'medium' | 'high' | 'critical';
 }
 
 export const SeverityBadge = ({ severity }: SeverityBadgeProps) => {
   const config = {
+    critical: {
+      icon: ShieldAlert,
+      label: 'Critical Risk',
+      className: 'bg-purple-500/10 text-purple-500 border-purple-500/20',
+      dotClass: 'bg-purple-500',
+    },
     high: {
       icon: AlertTriangle,
-      variant: 'destructive' as const,
       label: 'High Risk',
-      className: 'bg-red-100 text-red-800 hover:bg-red-100',
+      className: 'bg-red-500/10 text-red-500 border-red-500/20',
+      dotClass: 'bg-red-500',
     },
     medium: {
       icon: AlertCircle,
-      variant: 'default' as const,
       label: 'Medium Risk',
-      className: 'bg-yellow-100 text-yellow-800 hover:bg-yellow-100',
+      className: 'bg-amber-500/10 text-amber-500 border-amber-500/20',
+      dotClass: 'bg-amber-500',
     },
     low: {
       icon: Info,
-      variant: 'secondary' as const,
       label: 'Low Risk',
-      className: 'bg-blue-100 text-blue-800 hover:bg-blue-100',
+      className: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20',
+      dotClass: 'bg-emerald-500',
     },
   };
 
-  const { icon: Icon, variant, label, className } = config[severity];
+  // Fallback to high if severity is unknown
+  const severityKey = config[severity] ? severity : 'high';
+  const { icon: Icon, label, className, dotClass } = config[severityKey];
 
   return (
-    <Badge variant={variant} className={className}>
-      <Icon className="h-3 w-3 mr-1" />
-      {label}
-    </Badge>
+    <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border ${className}`}>
+      <div className={`w-1.5 h-1.5 rounded-full ${dotClass} animate-pulse`} />
+      <Icon className="h-3.5 w-3.5" />
+      <span className="text-xs font-mono font-medium">{label}</span>
+    </div>
   );
 };

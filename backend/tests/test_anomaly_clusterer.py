@@ -40,16 +40,13 @@ class TestAnomalyClusterer:
     @pytest.fixture
     def clusterer_with_mocks(self, mock_sentence_transformer, mock_umap, mock_hdbscan):
         """Create clusterer with mocked dependencies."""
-        with patch('app.core.anomaly_clusterer.SentenceTransformer') as mock_st_class, \
-             patch('app.core.anomaly_clusterer.umap.UMAP') as mock_umap_class, \
-             patch('app.core.anomaly_clusterer.hdbscan.HDBSCAN') as mock_hdbscan_class:
-
-            mock_st_class.return_value = mock_sentence_transformer
-            mock_umap_class.return_value = mock_umap
-            mock_hdbscan_class.return_value = mock_hdbscan
-
+        with patch.object(AnomalyClusterer, '_initialize_models'):
             clusterer = AnomalyClusterer()
-            return clusterer
+        clusterer.sentence_transformer = mock_sentence_transformer
+        clusterer.umap_reducer = mock_umap
+        clusterer.hdbscan_clusterer = mock_hdbscan
+        clusterer.is_available = True
+        return clusterer
 
     @pytest.fixture
     def sample_anomalies(self):

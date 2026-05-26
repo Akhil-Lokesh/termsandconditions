@@ -142,5 +142,5 @@ async def compare_documents(
         logger.error(f"Document comparison failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Document comparison failed: {str(e)}",
+            detail="Document comparison failed. Please try again.",
         )

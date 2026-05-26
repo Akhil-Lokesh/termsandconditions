@@ -1,9 +1,11 @@
+
 """
 Configuration settings for the T&C Analysis System.
 
 Uses Pydantic Settings to load and validate environment variables.
 """
 
+import os
 from typing import List
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -15,16 +17,16 @@ class Settings(BaseSettings):
 
     # Application
     APP_NAME: str = "T&C Analysis API"
-    ENVIRONMENT: str = "development"
+    ENVIRONMENT: str = "production"
     DEBUG: bool = False
+    TRUSTED_PROXY_IPS: str = "127.0.0.1"  # Space-separated IPs of trusted reverse proxies
 
-    # OpenAI Configuration
-    OPENAI_API_KEY: str
-    OPENAI_MODEL_GPT4: str = "gpt-4"
-    OPENAI_MODEL_GPT35: str = "gpt-3.5-turbo"
-    OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
-    OPENAI_MAX_RETRIES: int = 3
-    OPENAI_TIMEOUT: int = 60
+    # Anthropic Claude Configuration
+    ANTHROPIC_API_KEY: str
+    CLAUDE_MODEL: str = "claude-sonnet-4-5"
+    CLAUDE_MODEL_FAST: str = "claude-haiku-4-5-20251001"
+    CLAUDE_MAX_RETRIES: int = 3
+    CLAUDE_TIMEOUT: int = 60
 
     # Pinecone Configuration
     PINECONE_API_KEY: str
@@ -75,6 +77,15 @@ class Settings(BaseSettings):
 
     # Rate Limiting
     RATE_LIMIT_PER_HOUR: int = 100
+
+    # LLM Cost Controls (Layer 5.2)
+    # Hard per-document spend cap. The LLMClauseDetector tracks running USD cost
+    # across batch calls + self-consistency votes; further calls are skipped
+    # once `cost_tracker_usd + projected_cost` exceeds this cap.
+    MAX_LLM_USD_PER_DOC: float = float(os.getenv("MAX_LLM_USD_PER_DOC", "0.50"))
+    # Soft warning threshold (fraction of the hard cap). Logged at WARNING so
+    # monitoring picks it up before requests start getting silently dropped.
+    COST_WARN_THRESHOLD: float = 0.80
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", case_sensitive=True, extra="ignore"

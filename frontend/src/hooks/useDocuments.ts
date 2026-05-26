@@ -40,8 +40,27 @@ export const useUploadDocument = () => {
       toast.success('Document uploaded and analyzed successfully!');
       return data;
     },
-    onError: (error: any) => {
-      const message = error.response?.data?.detail || 'Failed to upload document';
+    onError: (error: unknown) => {
+      const e = error as { message?: string; response?: { data?: { detail?: string } } };
+      const message = e?.message || e?.response?.data?.detail || 'Failed to upload document';
+      toast.error(message);
+    },
+  });
+};
+
+export const useUploadText = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ text, title }: { text: string; title?: string }) => api.uploadText(text, title),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
+      toast.success('Text uploaded and analyzed successfully!');
+      return data;
+    },
+    onError: (error: unknown) => {
+      const e = error as { message?: string; response?: { data?: { detail?: string } } };
+      const message = e?.message || e?.response?.data?.detail || 'Failed to analyze text';
       toast.error(message);
     },
   });
@@ -56,8 +75,9 @@ export const useDeleteDocument = () => {
       queryClient.invalidateQueries({ queryKey: ['documents'] });
       toast.success('Document deleted successfully');
     },
-    onError: (error: any) => {
-      const message = error.response?.data?.detail || 'Failed to delete document';
+    onError: (error: unknown) => {
+      const e = error as { message?: string; response?: { data?: { detail?: string } } };
+      const message = e?.message || e?.response?.data?.detail || 'Failed to delete document';
       toast.error(message);
     },
   });

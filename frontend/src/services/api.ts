@@ -10,8 +10,11 @@ import type {
   QueryRequest,
   QueryResponse,
   AnomalyListResponse,
+  AnomalyReport,
   Anomaly,
   APIError,
+  FeedbackPayload,
+  FeedbackResponse,
 } from '@/types';
 
 // Determine API URL based on environment
@@ -90,7 +93,7 @@ class APIClient {
             case 401:
               message = 'Please log in to continue.';
               this.clearToken();
-              window.location.href = '/login';
+              window.dispatchEvent(new Event('auth:logout'));
               break;
             case 403:
               message = 'You do not have permission to perform this action.';
@@ -207,6 +210,17 @@ class APIClient {
     return response.data;
   }
 
+  async uploadText(text: string, title?: string): Promise<DocumentUploadResponse> {
+    const response = await this.client.post<DocumentUploadResponse>('/documents/text', {
+      text,
+      title,
+    }, {
+      timeout: 120000, // 2 minutes for text processing
+    });
+
+    return response.data;
+  }
+
   async getDocuments(skip = 0, limit = 10): Promise<DocumentListResponse> {
     const response = await this.client.get<DocumentListResponse>('/documents/', {
       params: { skip, limit },
@@ -245,13 +259,33 @@ class APIClient {
     return response.data;
   }
 
-  async getAnomaly(documentId: string, anomalyId: string): Promise<Anomaly> {
-    const response = await this.client.get<Anomaly>(`/anomalies/${documentId}/${anomalyId}`);
+  async getAnomaly(anomalyId: string): Promise<Anomaly> {
+    const response = await this.client.get<Anomaly>(`/anomalies/detail/${anomalyId}`);
     return response.data;
   }
 
   async reanalyzeDocument(documentId: string): Promise<AnomalyListResponse> {
     const response = await this.client.post<AnomalyListResponse>(`/anomalies/reanalyze/${documentId}`);
+    return response.data;
+  }
+
+  // Get full anomaly report with competitive benchmark
+  async getAnomalyReport(documentId: string): Promise<AnomalyReport> {
+    const response = await this.client.get<AnomalyReport>(`/anomalies/report/${documentId}`, {
+      timeout: 120000, // 2 minutes for full analysis
+    });
+    return response.data;
+  }
+
+  // Submit user feedback on a detected anomaly (Layer 5 — active learning)
+  async submitFeedback(
+    anomalyId: string,
+    payload: FeedbackPayload
+  ): Promise<FeedbackResponse> {
+    const response = await this.client.post<FeedbackResponse>(
+      `/anomalies/${anomalyId}/feedback`,
+      payload
+    );
     return response.data;
   }
 }

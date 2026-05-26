@@ -9,7 +9,7 @@ For example:
 """
 
 from typing import List, Dict, Optional
-from app.services.openai_service import OpenAIService
+from app.services.embedding_service import EmbeddingService
 import logging
 
 logger = logging.getLogger(__name__)
@@ -86,14 +86,14 @@ class SemanticRiskDetector:
     # Similarity threshold for semantic matching
     SIMILARITY_THRESHOLD = 0.80  # 80% similarity = likely rephrased risk
 
-    def __init__(self, openai_service: OpenAIService):
+    def __init__(self, embedding_service: EmbeddingService):
         """
         Initialize semantic risk detector.
 
         Args:
-            openai_service: OpenAI service for generating embeddings
+            embedding_service: Embedding service for generating embeddings
         """
-        self.openai = openai_service
+        self.embedding = embedding_service
         self.template_embeddings: Optional[Dict[str, List[List[float]]]] = None
 
     async def initialize(self):
@@ -113,7 +113,7 @@ class SemanticRiskDetector:
             embeddings = []
             for template in templates:
                 try:
-                    embedding = await self.openai.create_embedding(template)
+                    embedding = await self.embedding.create_embedding(template)
                     embeddings.append(embedding)
                 except Exception as e:
                     logger.warning(
@@ -151,7 +151,7 @@ class SemanticRiskDetector:
         # Get clause embedding
         if clause_embedding is None:
             try:
-                clause_embedding = await self.openai.create_embedding(clause_text)
+                clause_embedding = await self.embedding.create_embedding(clause_text)
             except Exception as e:
                 logger.error(f"Failed to generate embedding for clause: {e}")
                 return []
