@@ -83,6 +83,50 @@ python -m evals.cli ci-check \
 CI runs the same with `--n 100` (~$1.25/run) on every PR touching
 `app/core/llm_clause_detector.py` or `evals/`.
 
+### Cross-family agreement study (Claude vs Gemini Flash)
+
+A complementary check to the Claude-as-judge baseline: have Gemini Flash
+independently label the same clauses and compute inter-annotator
+agreement. Surfaces same-family bias that the Claude judge can't see.
+
+```bash
+# Requires both API keys exported.
+export ANTHROPIC_API_KEY=sk-ant-...
+export GEMINI_API_KEY=AIza...
+
+# Default: 30 sampled clauses, batches of 5, gemini-2.0-flash.
+python -m evals.run_gemini_agreement \
+    --n 30 --dataset all \
+    --out evals/gemini_agreement_run.json
+
+# Render the human-readable comparative report (Markdown).
+python -m evals.generate_comparative_report \
+    --in evals/gemini_agreement_run.json \
+    --out evals/COMPARATIVE_REPORT.md
+```
+
+**Cost / free-tier safety:**
+
+| Model | Free RPM | Free RPD | 30-clause run impact |
+| --- | --- | --- | --- |
+| `gemini-2.5-flash` (default) | 10 | 250 | 6 requests, ~40s, ~2.4% of daily budget |
+| `gemini-2.0-flash` | 15 | 1,500 | 6 requests, ~30s, well under limits |
+| Paid tier | 1,000+ | unlimited | $0.075/$0.30 per 1M input/output tokens |
+
+`GeminiJudge` enforces a per-instance pacing lock of 6.5 s/request
+(`RPM_PACING_SECONDS` in `evals/judge/gemini_judge.py`), keeping
+effective throughput at ~9 RPM — safely under the tightest free-tier
+ceiling (2.5 Flash at 10 RPM). 429
+responses trigger exponential backoff (max 5 retries) and honor
+`Retry-After` headers. The request body intentionally omits the `tools`
+key so search grounding cannot fire.
+
+**Skip-safe:** missing `GEMINI_API_KEY` or `ANTHROPIC_API_KEY` causes
+the runner to exit 0 with a printed message; no artifact is written.
+The report generator can be re-run any time — when no input data is
+available it produces a placeholder report with `[no data — run
+gemini-agreement first]` markers in every numeric field.
+
 ---
 
 ## 4. Feature flags reference
@@ -165,6 +209,10 @@ Add both to your `.env`. If still hanging, run `python -c "import sentence_trans
 | `evals/baseline_runner.py` | Generates `baseline.json` |
 | `evals/judge/claude_judge.py` | Primary Opus 4.7 judge |
 | `evals/judge/openai_judge.py` | GPT-4o cross-checker; **must NOT import `app/services/claude_service.py`** (import-linter rule) |
+| `evals/judge/gemini_judge.py` | Independent Gemini Flash labeler for inter-annotator agreement; REST-based, no SDK dep; subject to the cross-family import-firewall rule (no rater may import another rater's client SDK) |
+| `evals/run_gemini_agreement.py` | Orchestrates Claude detector + Gemini labels → agreement metrics |
+| `evals/generate_comparative_report.py` | Renders `evals/COMPARATIVE_REPORT.md` from the agreement-run JSON; never invents numbers |
+| `evals/COMPARATIVE_REPORT.md` | Auto-generated cross-family comparison report (resume-ready bullets + confusion matrix + disagreements) |
 | `evals/datasets/firewall.py` | Blocks `app/core/**` from reading the gold holdout |
 | `evals/metrics/kappa.py` | Cohen's kappa + agreement metrics |
 | `app/models/feedback_event.py` | `FeedbackEvent` SQLAlchemy model |

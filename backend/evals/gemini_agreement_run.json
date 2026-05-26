@@ -1,0 +1,385 @@
+{
+  "model_claude": "production-detector",
+  "model_gemini": "gemini:gemini-2.5-flash",
+  "dataset": "all",
+  "n_samples": 30,
+  "batch_size": 5,
+  "seed": 42,
+  "gemini_stats": {
+    "requests_sent": 7,
+    "requests_retried": 1,
+    "rate_limit_hits": 0,
+    "parse_failures": 0,
+    "elapsed_seconds": 55.21
+  },
+  "agreement": {
+    "n": 30,
+    "severity_agreement_rate": 0.6,
+    "category_agreement_rate": 0.6333,
+    "joint_agreement_rate": 0.3667,
+    "severity_kappa": 0.3814432989690721,
+    "severity_kappa_interpretation": "fair",
+    "macro_severity_kappa": 0.5234689985834151,
+    "per_severity_kappa": {
+      "critical": 1.0,
+      "high": 0.28571428571428586,
+      "medium": 0.20289855072463756,
+      "low": 0.605263157894737
+    },
+    "category_kappa": 0.4954128440366972,
+    "severity_confusion_matrix": {
+      "low": {
+        "medium": 4,
+        "low": 11,
+        "high": 1
+      },
+      "medium": {
+        "high": 6,
+        "medium": 5,
+        "low": 1
+      },
+      "high": {
+        "high": 2
+      }
+    }
+  },
+  "n_disagreements": 12,
+  "disagreement_log_path": "evals/gemini_disagreements.jsonl",
+  "gemini_raw_path": "evals/_cache/gemini_raw.jsonl",
+  "claude_predictions": [
+    {
+      "clause_id": "opp115_1264_citizen.org_5",
+      "severity": "low",
+      "risk_category": "privacy"
+    },
+    {
+      "clause_id": "opp115_135_instagram.com_3",
+      "severity": "low",
+      "risk_category": "privacy"
+    },
+    {
+      "clause_id": "opp115_453_barnesandnoble.com_54",
+      "severity": "medium",
+      "risk_category": "privacy"
+    },
+    {
+      "clause_id": "unfair_tos_train_232",
+      "severity": "medium",
+      "risk_category": "liability"
+    },
+    {
+      "clause_id": "opp115_135_instagram.com_17",
+      "severity": "low",
+      "risk_category": "privacy"
+    },
+    {
+      "clause_id": "unfair_tos_validation_1979",
+      "severity": "medium",
+      "risk_category": "payment"
+    },
+    {
+      "clause_id": "opp115_1034_aol.com_38",
+      "severity": "medium",
+      "risk_category": "privacy"
+    },
+    {
+      "clause_id": "unfair_tos_train_1572",
+      "severity": "medium",
+      "risk_category": "payment"
+    },
+    {
+      "clause_id": "unfair_tos_train_1771",
+      "severity": "medium",
+      "risk_category": "modification"
+    },
+    {
+      "clause_id": "opp115_1419_miaminewtimes.com_25",
+      "severity": "medium",
+      "risk_category": "privacy"
+    },
+    {
+      "clause_id": "opp115_995_mohegansun.com_2",
+      "severity": "low",
+      "risk_category": "privacy"
+    },
+    {
+      "clause_id": "opp115_1636_sidearmsports.com_5",
+      "severity": "medium",
+      "risk_category": "privacy"
+    },
+    {
+      "clause_id": "opp115_202_foodallergy.org_7",
+      "severity": "low",
+      "risk_category": "privacy"
+    },
+    {
+      "clause_id": "opp115_453_barnesandnoble.com_34",
+      "severity": "low",
+      "risk_category": "privacy"
+    },
+    {
+      "clause_id": "opp115_70_meredith.com_2",
+      "severity": "low",
+      "risk_category": "privacy"
+    },
+    {
+      "clause_id": "opp115_1083_highgearmedia.com_17",
+      "severity": "low",
+      "risk_category": "privacy"
+    },
+    {
+      "clause_id": "unfair_tos_train_1310",
+      "severity": "high",
+      "risk_category": "payment"
+    },
+    {
+      "clause_id": "unfair_tos_validation_1310",
+      "severity": "medium",
+      "risk_category": "liability"
+    },
+    {
+      "clause_id": "opp115_93_pbs.org_22",
+      "severity": "low",
+      "risk_category": "privacy"
+    },
+    {
+      "clause_id": "opp115_1618_sltrib.com_25",
+      "severity": "low",
+      "risk_category": "privacy"
+    },
+    {
+      "clause_id": "unfair_tos_train_1372",
+      "severity": "medium",
+      "risk_category": "liability"
+    },
+    {
+      "clause_id": "opp115_453_barnesandnoble.com_60",
+      "severity": "low",
+      "risk_category": "privacy"
+    },
+    {
+      "clause_id": "opp115_1360_thehill.com_1",
+      "severity": "low",
+      "risk_category": "privacy"
+    },
+    {
+      "clause_id": "opp115_98_neworleansonline.com_33",
+      "severity": "medium",
+      "risk_category": "surveillance"
+    },
+    {
+      "clause_id": "opp115_883_ted.com_24",
+      "severity": "low",
+      "risk_category": "privacy"
+    },
+    {
+      "clause_id": "unfair_tos_validation_827",
+      "severity": "high",
+      "risk_category": "termination"
+    },
+    {
+      "clause_id": "opp115_531_archives.gov_39",
+      "severity": "low",
+      "risk_category": "other"
+    },
+    {
+      "clause_id": "unfair_tos_test_449",
+      "severity": "medium",
+      "risk_category": "content"
+    },
+    {
+      "clause_id": "opp115_1468_rockstargames.com_60",
+      "severity": "low",
+      "risk_category": "privacy"
+    },
+    {
+      "clause_id": "opp115_883_ted.com_21",
+      "severity": "low",
+      "risk_category": "other"
+    }
+  ],
+  "gemini_labels": [
+    {
+      "clause_id": "opp115_1264_citizen.org_5",
+      "severity": "medium",
+      "risk_category": "privacy",
+      "raw_response": "[\n  {\n    \"clause_id\": \"opp115_1264_citizen.org_5\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_135_instagram.com_3\",\n    \"severity\": \"low\",\n    \"risk_category\": \"other\"\n  },\n  {\n    \"clause_id\": \"opp115_453_barnesandnoble.com_54\",\n    \"severity\": \"high\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"unfair_tos_train_232\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"liability\"\n  },\n  {\n    \"clause_id\": \"opp115_135_instagram.com_17\",\n"
+    },
+    {
+      "clause_id": "opp115_135_instagram.com_3",
+      "severity": "low",
+      "risk_category": "other",
+      "raw_response": "[\n  {\n    \"clause_id\": \"opp115_1264_citizen.org_5\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_135_instagram.com_3\",\n    \"severity\": \"low\",\n    \"risk_category\": \"other\"\n  },\n  {\n    \"clause_id\": \"opp115_453_barnesandnoble.com_54\",\n    \"severity\": \"high\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"unfair_tos_train_232\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"liability\"\n  },\n  {\n    \"clause_id\": \"opp115_135_instagram.com_17\",\n"
+    },
+    {
+      "clause_id": "opp115_453_barnesandnoble.com_54",
+      "severity": "high",
+      "risk_category": "privacy",
+      "raw_response": "[\n  {\n    \"clause_id\": \"opp115_1264_citizen.org_5\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_135_instagram.com_3\",\n    \"severity\": \"low\",\n    \"risk_category\": \"other\"\n  },\n  {\n    \"clause_id\": \"opp115_453_barnesandnoble.com_54\",\n    \"severity\": \"high\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"unfair_tos_train_232\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"liability\"\n  },\n  {\n    \"clause_id\": \"opp115_135_instagram.com_17\",\n"
+    },
+    {
+      "clause_id": "unfair_tos_train_232",
+      "severity": "medium",
+      "risk_category": "liability",
+      "raw_response": "[\n  {\n    \"clause_id\": \"opp115_1264_citizen.org_5\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_135_instagram.com_3\",\n    \"severity\": \"low\",\n    \"risk_category\": \"other\"\n  },\n  {\n    \"clause_id\": \"opp115_453_barnesandnoble.com_54\",\n    \"severity\": \"high\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"unfair_tos_train_232\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"liability\"\n  },\n  {\n    \"clause_id\": \"opp115_135_instagram.com_17\",\n"
+    },
+    {
+      "clause_id": "opp115_135_instagram.com_17",
+      "severity": "medium",
+      "risk_category": "privacy",
+      "raw_response": "[\n  {\n    \"clause_id\": \"opp115_1264_citizen.org_5\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_135_instagram.com_3\",\n    \"severity\": \"low\",\n    \"risk_category\": \"other\"\n  },\n  {\n    \"clause_id\": \"opp115_453_barnesandnoble.com_54\",\n    \"severity\": \"high\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"unfair_tos_train_232\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"liability\"\n  },\n  {\n    \"clause_id\": \"opp115_135_instagram.com_17\",\n"
+    },
+    {
+      "clause_id": "unfair_tos_validation_1979",
+      "severity": "high",
+      "risk_category": "liability",
+      "raw_response": "[\n  {\n    \"clause_id\": \"unfair_tos_validation_1979\",\n    \"severity\": \"high\",\n    \"risk_category\": \"liability\"\n  },\n  {\n    \"clause_id\": \"opp115_1034_aol.com_38\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"unfair_tos_train_1572\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"payment\"\n  },\n  {\n    \"clause_id\": \"unfair_tos_train_1771\",\n    \"severity\": \"low\",\n    \"risk_category\": \"other\"\n  },\n  {\n    \"clause_id\": \"opp115_1419_miaminewtimes.com_25\",\n    \"sev"
+    },
+    {
+      "clause_id": "opp115_1034_aol.com_38",
+      "severity": "medium",
+      "risk_category": "privacy",
+      "raw_response": "[\n  {\n    \"clause_id\": \"unfair_tos_validation_1979\",\n    \"severity\": \"high\",\n    \"risk_category\": \"liability\"\n  },\n  {\n    \"clause_id\": \"opp115_1034_aol.com_38\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"unfair_tos_train_1572\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"payment\"\n  },\n  {\n    \"clause_id\": \"unfair_tos_train_1771\",\n    \"severity\": \"low\",\n    \"risk_category\": \"other\"\n  },\n  {\n    \"clause_id\": \"opp115_1419_miaminewtimes.com_25\",\n    \"sev"
+    },
+    {
+      "clause_id": "unfair_tos_train_1572",
+      "severity": "medium",
+      "risk_category": "payment",
+      "raw_response": "[\n  {\n    \"clause_id\": \"unfair_tos_validation_1979\",\n    \"severity\": \"high\",\n    \"risk_category\": \"liability\"\n  },\n  {\n    \"clause_id\": \"opp115_1034_aol.com_38\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"unfair_tos_train_1572\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"payment\"\n  },\n  {\n    \"clause_id\": \"unfair_tos_train_1771\",\n    \"severity\": \"low\",\n    \"risk_category\": \"other\"\n  },\n  {\n    \"clause_id\": \"opp115_1419_miaminewtimes.com_25\",\n    \"sev"
+    },
+    {
+      "clause_id": "unfair_tos_train_1771",
+      "severity": "low",
+      "risk_category": "other",
+      "raw_response": "[\n  {\n    \"clause_id\": \"unfair_tos_validation_1979\",\n    \"severity\": \"high\",\n    \"risk_category\": \"liability\"\n  },\n  {\n    \"clause_id\": \"opp115_1034_aol.com_38\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"unfair_tos_train_1572\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"payment\"\n  },\n  {\n    \"clause_id\": \"unfair_tos_train_1771\",\n    \"severity\": \"low\",\n    \"risk_category\": \"other\"\n  },\n  {\n    \"clause_id\": \"opp115_1419_miaminewtimes.com_25\",\n    \"sev"
+    },
+    {
+      "clause_id": "opp115_1419_miaminewtimes.com_25",
+      "severity": "high",
+      "risk_category": "privacy",
+      "raw_response": "[\n  {\n    \"clause_id\": \"unfair_tos_validation_1979\",\n    \"severity\": \"high\",\n    \"risk_category\": \"liability\"\n  },\n  {\n    \"clause_id\": \"opp115_1034_aol.com_38\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"unfair_tos_train_1572\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"payment\"\n  },\n  {\n    \"clause_id\": \"unfair_tos_train_1771\",\n    \"severity\": \"low\",\n    \"risk_category\": \"other\"\n  },\n  {\n    \"clause_id\": \"opp115_1419_miaminewtimes.com_25\",\n    \"sev"
+    },
+    {
+      "clause_id": "opp115_995_mohegansun.com_2",
+      "severity": "low",
+      "risk_category": "privacy",
+      "raw_response": "[\n  {\n    \"clause_id\": \"opp115_995_mohegansun.com_2\",\n    \"severity\": \"low\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_1636_sidearmsports.com_5\",\n    \"severity\": \"high\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_202_foodallergy.org_7\",\n    \"severity\": \"low\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_453_barnesandnoble.com_34\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"data\"\n  },\n  {\n    \"clause_id\": \"opp115_70_meredith.co"
+    },
+    {
+      "clause_id": "opp115_1636_sidearmsports.com_5",
+      "severity": "high",
+      "risk_category": "privacy",
+      "raw_response": "[\n  {\n    \"clause_id\": \"opp115_995_mohegansun.com_2\",\n    \"severity\": \"low\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_1636_sidearmsports.com_5\",\n    \"severity\": \"high\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_202_foodallergy.org_7\",\n    \"severity\": \"low\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_453_barnesandnoble.com_34\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"data\"\n  },\n  {\n    \"clause_id\": \"opp115_70_meredith.co"
+    },
+    {
+      "clause_id": "opp115_202_foodallergy.org_7",
+      "severity": "low",
+      "risk_category": "privacy",
+      "raw_response": "[\n  {\n    \"clause_id\": \"opp115_995_mohegansun.com_2\",\n    \"severity\": \"low\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_1636_sidearmsports.com_5\",\n    \"severity\": \"high\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_202_foodallergy.org_7\",\n    \"severity\": \"low\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_453_barnesandnoble.com_34\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"data\"\n  },\n  {\n    \"clause_id\": \"opp115_70_meredith.co"
+    },
+    {
+      "clause_id": "opp115_453_barnesandnoble.com_34",
+      "severity": "medium",
+      "risk_category": "data",
+      "raw_response": "[\n  {\n    \"clause_id\": \"opp115_995_mohegansun.com_2\",\n    \"severity\": \"low\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_1636_sidearmsports.com_5\",\n    \"severity\": \"high\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_202_foodallergy.org_7\",\n    \"severity\": \"low\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_453_barnesandnoble.com_34\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"data\"\n  },\n  {\n    \"clause_id\": \"opp115_70_meredith.co"
+    },
+    {
+      "clause_id": "opp115_70_meredith.com_2",
+      "severity": "low",
+      "risk_category": "other",
+      "raw_response": "[\n  {\n    \"clause_id\": \"opp115_995_mohegansun.com_2\",\n    \"severity\": \"low\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_1636_sidearmsports.com_5\",\n    \"severity\": \"high\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_202_foodallergy.org_7\",\n    \"severity\": \"low\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_453_barnesandnoble.com_34\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"data\"\n  },\n  {\n    \"clause_id\": \"opp115_70_meredith.co"
+    },
+    {
+      "clause_id": "opp115_1083_highgearmedia.com_17",
+      "severity": "low",
+      "risk_category": "data",
+      "raw_response": "[\n  {\n    \"clause_id\": \"opp115_1083_highgearmedia.com_17\",\n    \"severity\": \"low\",\n    \"risk_category\": \"data\"\n  },\n  {\n    \"clause_id\": \"unfair_tos_train_1310\",\n    \"severity\": \"high\",\n    \"risk_category\": \"payment\"\n  },\n  {\n    \"clause_id\": \"unfair_tos_validation_1310\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"liability\"\n  },\n  {\n    \"clause_id\": \"opp115_93_pbs.org_22\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_1618_sltrib.com_25\",\n    \"se"
+    },
+    {
+      "clause_id": "unfair_tos_train_1310",
+      "severity": "high",
+      "risk_category": "payment",
+      "raw_response": "[\n  {\n    \"clause_id\": \"opp115_1083_highgearmedia.com_17\",\n    \"severity\": \"low\",\n    \"risk_category\": \"data\"\n  },\n  {\n    \"clause_id\": \"unfair_tos_train_1310\",\n    \"severity\": \"high\",\n    \"risk_category\": \"payment\"\n  },\n  {\n    \"clause_id\": \"unfair_tos_validation_1310\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"liability\"\n  },\n  {\n    \"clause_id\": \"opp115_93_pbs.org_22\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_1618_sltrib.com_25\",\n    \"se"
+    },
+    {
+      "clause_id": "unfair_tos_validation_1310",
+      "severity": "medium",
+      "risk_category": "liability",
+      "raw_response": "[\n  {\n    \"clause_id\": \"opp115_1083_highgearmedia.com_17\",\n    \"severity\": \"low\",\n    \"risk_category\": \"data\"\n  },\n  {\n    \"clause_id\": \"unfair_tos_train_1310\",\n    \"severity\": \"high\",\n    \"risk_category\": \"payment\"\n  },\n  {\n    \"clause_id\": \"unfair_tos_validation_1310\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"liability\"\n  },\n  {\n    \"clause_id\": \"opp115_93_pbs.org_22\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_1618_sltrib.com_25\",\n    \"se"
+    },
+    {
+      "clause_id": "opp115_93_pbs.org_22",
+      "severity": "medium",
+      "risk_category": "privacy",
+      "raw_response": "[\n  {\n    \"clause_id\": \"opp115_1083_highgearmedia.com_17\",\n    \"severity\": \"low\",\n    \"risk_category\": \"data\"\n  },\n  {\n    \"clause_id\": \"unfair_tos_train_1310\",\n    \"severity\": \"high\",\n    \"risk_category\": \"payment\"\n  },\n  {\n    \"clause_id\": \"unfair_tos_validation_1310\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"liability\"\n  },\n  {\n    \"clause_id\": \"opp115_93_pbs.org_22\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_1618_sltrib.com_25\",\n    \"se"
+    },
+    {
+      "clause_id": "opp115_1618_sltrib.com_25",
+      "severity": "low",
+      "risk_category": "privacy",
+      "raw_response": "[\n  {\n    \"clause_id\": \"opp115_1083_highgearmedia.com_17\",\n    \"severity\": \"low\",\n    \"risk_category\": \"data\"\n  },\n  {\n    \"clause_id\": \"unfair_tos_train_1310\",\n    \"severity\": \"high\",\n    \"risk_category\": \"payment\"\n  },\n  {\n    \"clause_id\": \"unfair_tos_validation_1310\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"liability\"\n  },\n  {\n    \"clause_id\": \"opp115_93_pbs.org_22\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_1618_sltrib.com_25\",\n    \"se"
+    },
+    {
+      "clause_id": "unfair_tos_train_1372",
+      "severity": "medium",
+      "risk_category": "liability",
+      "raw_response": "[\n  {\n    \"clause_id\": \"unfair_tos_train_1372\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"liability\"\n  },\n  {\n    \"clause_id\": \"opp115_453_barnesandnoble.com_60\",\n    \"severity\": \"high\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_1360_thehill.com_1\",\n    \"severity\": \"low\",\n    \"risk_category\": \"data\"\n  },\n  {\n    \"clause_id\": \"opp115_98_neworleansonline.com_33\",\n    \"severity\": \"high\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_883_ted.com_24\",\n "
+    },
+    {
+      "clause_id": "opp115_453_barnesandnoble.com_60",
+      "severity": "high",
+      "risk_category": "privacy",
+      "raw_response": "[\n  {\n    \"clause_id\": \"unfair_tos_train_1372\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"liability\"\n  },\n  {\n    \"clause_id\": \"opp115_453_barnesandnoble.com_60\",\n    \"severity\": \"high\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_1360_thehill.com_1\",\n    \"severity\": \"low\",\n    \"risk_category\": \"data\"\n  },\n  {\n    \"clause_id\": \"opp115_98_neworleansonline.com_33\",\n    \"severity\": \"high\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_883_ted.com_24\",\n "
+    },
+    {
+      "clause_id": "opp115_1360_thehill.com_1",
+      "severity": "low",
+      "risk_category": "data",
+      "raw_response": "[\n  {\n    \"clause_id\": \"unfair_tos_train_1372\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"liability\"\n  },\n  {\n    \"clause_id\": \"opp115_453_barnesandnoble.com_60\",\n    \"severity\": \"high\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_1360_thehill.com_1\",\n    \"severity\": \"low\",\n    \"risk_category\": \"data\"\n  },\n  {\n    \"clause_id\": \"opp115_98_neworleansonline.com_33\",\n    \"severity\": \"high\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_883_ted.com_24\",\n "
+    },
+    {
+      "clause_id": "opp115_98_neworleansonline.com_33",
+      "severity": "high",
+      "risk_category": "privacy",
+      "raw_response": "[\n  {\n    \"clause_id\": \"unfair_tos_train_1372\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"liability\"\n  },\n  {\n    \"clause_id\": \"opp115_453_barnesandnoble.com_60\",\n    \"severity\": \"high\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_1360_thehill.com_1\",\n    \"severity\": \"low\",\n    \"risk_category\": \"data\"\n  },\n  {\n    \"clause_id\": \"opp115_98_neworleansonline.com_33\",\n    \"severity\": \"high\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_883_ted.com_24\",\n "
+    },
+    {
+      "clause_id": "opp115_883_ted.com_24",
+      "severity": "low",
+      "risk_category": "rights",
+      "raw_response": "[\n  {\n    \"clause_id\": \"unfair_tos_train_1372\",\n    \"severity\": \"medium\",\n    \"risk_category\": \"liability\"\n  },\n  {\n    \"clause_id\": \"opp115_453_barnesandnoble.com_60\",\n    \"severity\": \"high\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_1360_thehill.com_1\",\n    \"severity\": \"low\",\n    \"risk_category\": \"data\"\n  },\n  {\n    \"clause_id\": \"opp115_98_neworleansonline.com_33\",\n    \"severity\": \"high\",\n    \"risk_category\": \"privacy\"\n  },\n  {\n    \"clause_id\": \"opp115_883_ted.com_24\",\n "
+    },
+    {
+      "clause_id": "unfair_tos_validation_827",
+      "severity": "high",
+      "risk_category": "termination",
+      "raw_response": "[\n  {\n    \"clause_id\": \"unfair_tos_validation_827\",\n    \"severity\": \"high\",\n    \"risk_category\": \"termination\"\n  },\n  {\n    \"clause_id\": \"opp115_531_archives.gov_39\",\n    \"severity\": \"low\",\n    \"risk_category\": \"rights\"\n  },\n  {\n    \"clause_id\": \"unfair_tos_test_449\",\n    \"severity\": \"high\",\n    \"risk_category\": \"content\"\n  },\n  {\n    \"clause_id\": \"opp115_1468_rockstargames.com_60\",\n    \"severity\": \"low\",\n    \"risk_category\": \"other\"\n  },\n  {\n    \"clause_id\": \"opp115_883_ted.com_21\",\n    \"severi"
+    },
+    {
+      "clause_id": "opp115_531_archives.gov_39",
+      "severity": "low",
+      "risk_category": "rights",
+      "raw_response": "[\n  {\n    \"clause_id\": \"unfair_tos_validation_827\",\n    \"severity\": \"high\",\n    \"risk_category\": \"termination\"\n  },\n  {\n    \"clause_id\": \"opp115_531_archives.gov_39\",\n    \"severity\": \"low\",\n    \"risk_category\": \"rights\"\n  },\n  {\n    \"clause_id\": \"unfair_tos_test_449\",\n    \"severity\": \"high\",\n    \"risk_category\": \"content\"\n  },\n  {\n    \"clause_id\": \"opp115_1468_rockstargames.com_60\",\n    \"severity\": \"low\",\n    \"risk_category\": \"other\"\n  },\n  {\n    \"clause_id\": \"opp115_883_ted.com_21\",\n    \"severi"
+    },
+    {
+      "clause_id": "unfair_tos_test_449",
+      "severity": "high",
+      "risk_category": "content",
+      "raw_response": "[\n  {\n    \"clause_id\": \"unfair_tos_validation_827\",\n    \"severity\": \"high\",\n    \"risk_category\": \"termination\"\n  },\n  {\n    \"clause_id\": \"opp115_531_archives.gov_39\",\n    \"severity\": \"low\",\n    \"risk_category\": \"rights\"\n  },\n  {\n    \"clause_id\": \"unfair_tos_test_449\",\n    \"severity\": \"high\",\n    \"risk_category\": \"content\"\n  },\n  {\n    \"clause_id\": \"opp115_1468_rockstargames.com_60\",\n    \"severity\": \"low\",\n    \"risk_category\": \"other\"\n  },\n  {\n    \"clause_id\": \"opp115_883_ted.com_21\",\n    \"severi"
+    },
+    {
+      "clause_id": "opp115_1468_rockstargames.com_60",
+      "severity": "low",
+      "risk_category": "other",
+      "raw_response": "[\n  {\n    \"clause_id\": \"unfair_tos_validation_827\",\n    \"severity\": \"high\",\n    \"risk_category\": \"termination\"\n  },\n  {\n    \"clause_id\": \"opp115_531_archives.gov_39\",\n    \"severity\": \"low\",\n    \"risk_category\": \"rights\"\n  },\n  {\n    \"clause_id\": \"unfair_tos_test_449\",\n    \"severity\": \"high\",\n    \"risk_category\": \"content\"\n  },\n  {\n    \"clause_id\": \"opp115_1468_rockstargames.com_60\",\n    \"severity\": \"low\",\n    \"risk_category\": \"other\"\n  },\n  {\n    \"clause_id\": \"opp115_883_ted.com_21\",\n    \"severi"
+    },
+    {
+      "clause_id": "opp115_883_ted.com_21",
+      "severity": "low",
+      "risk_category": "other",
+      "raw_response": "[\n  {\n    \"clause_id\": \"unfair_tos_validation_827\",\n    \"severity\": \"high\",\n    \"risk_category\": \"termination\"\n  },\n  {\n    \"clause_id\": \"opp115_531_archives.gov_39\",\n    \"severity\": \"low\",\n    \"risk_category\": \"rights\"\n  },\n  {\n    \"clause_id\": \"unfair_tos_test_449\",\n    \"severity\": \"high\",\n    \"risk_category\": \"content\"\n  },\n  {\n    \"clause_id\": \"opp115_1468_rockstargames.com_60\",\n    \"severity\": \"low\",\n    \"risk_category\": \"other\"\n  },\n  {\n    \"clause_id\": \"opp115_883_ted.com_21\",\n    \"severi"
+    }
+  ],
+  "timestamp": "2026-05-26T17:27:57.474526+00:00",
+  "git_commit": "4a91821744eba0d4ab7740f858c784266f86fa0d"
+}
