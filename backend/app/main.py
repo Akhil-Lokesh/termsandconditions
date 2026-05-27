@@ -87,21 +87,9 @@ async def lifespan(app: FastAPI):
         init_failures.append(f"Embedding: {e}")
         app.state.embedding = None
 
-    # Hydrate active learning buffer from DB (feature-flagged via
-    # ACTIVE_LEARNING_PERSIST). The ALM is owned by AnomalyDetector instances,
-    # so actual hydration runs lazily inside AnomalyDetector.__init__ when the
-    # detector is first constructed. This log line documents the pathway.
-    try:
-        from app.core.active_learning_manager import _persist_enabled
-        if _persist_enabled():
-            logger.info(
-                "Active learning persistence enabled — hydration deferred to "
-                "first AnomalyDetector instance"
-            )
-        else:
-            logger.info(
-                "Active learning persistence disabled (ACTIVE_LEARNING_PERSIST!=true)"
-            )
+    # (ActiveLearningManager removed in simple-engineering refactor —
+    # feedback isn't trained on; the FeedbackEvent table persists raw
+    # rows for offline analysis but no live hook exists.)
     except Exception as e:
         logger.warning(f"Active learning hydration check skipped: {e}")
 
@@ -235,45 +223,11 @@ async def root():
 # Include API routers
 from app.api.v1 import auth, upload, query, anomalies, compare
 
-if settings.DEBUG or settings.ENVIRONMENT == "development":
-    from app.api.v1 import debug
-
-app.include_router(
-    auth.router,
-    prefix=f"{settings.API_V1_PREFIX}/auth",
-    tags=["Authentication"],
-)
-
-app.include_router(
-    upload.router,
-    prefix=f"{settings.API_V1_PREFIX}/documents",
-    tags=["Documents"],
-)
-
-app.include_router(
-    query.router,
-    prefix=f"{settings.API_V1_PREFIX}/query",
-    tags=["Q&A"],
-)
-
-app.include_router(
-    anomalies.router,
-    prefix=f"{settings.API_V1_PREFIX}/anomalies",
-    tags=["Anomalies"],
-)
-
-app.include_router(
-    compare.router,
-    prefix=f"{settings.API_V1_PREFIX}/compare",
-    tags=["Comparison"],
-)
-
-if settings.DEBUG or settings.ENVIRONMENT == "development":
-    app.include_router(
-        debug.router,
-        prefix=f"{settings.API_V1_PREFIX}/debug",
-        tags=["Debug"],
-    )
+app.include_router(auth.router, prefix=f"{settings.API_V1_PREFIX}/auth", tags=["Authentication"])
+app.include_router(upload.router, prefix=f"{settings.API_V1_PREFIX}/documents", tags=["Documents"])
+app.include_router(query.router, prefix=f"{settings.API_V1_PREFIX}/query", tags=["Q&A"])
+app.include_router(anomalies.router, prefix=f"{settings.API_V1_PREFIX}/anomalies", tags=["Anomalies"])
+app.include_router(compare.router, prefix=f"{settings.API_V1_PREFIX}/compare", tags=["Comparison"])
 
 logger.info("✓ API routers registered")
 

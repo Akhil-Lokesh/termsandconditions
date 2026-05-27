@@ -125,8 +125,9 @@ async def get_performance_metrics(
         # Initialize detector
         detector = AnomalyDetector()
 
-        # Get feedback stats
-        feedback_stats = detector.active_learning.get_feedback_stats()
+        # Feedback stats placeholder — ActiveLearningManager was removed in the
+        # simple-engineering refactor since nothing trained on the buffer.
+        feedback_stats = {"total_feedback": 0, "positive": 0, "negative": 0}
 
         # Calculate aggregate metrics from database
         total_documents = db.query(func.count(Document.id)).scalar() or 0
