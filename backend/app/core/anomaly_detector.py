@@ -42,15 +42,7 @@ from app.core.alert_ranker import AlertRanker  # Stage 6: Alert Ranking & Budget
 from app.core.context_aware_layer import ContextAwareLayer  # NEW: Context-Aware Layer
 from app.core.competitive_analyzer import CompetitiveAnalyzer  # NEW: Competitive Benchmarking
 from app.core.rag_anomaly_detector import RAGAnomalyDetector  # NEW: RAG-based detection
-from app.core.constants import (
-    ThreatLevel,
-    DisplayCategory,
-    PATTERN_THREAT_LEVELS,
-    CommonnessThresholds,
-    get_display_category,
-    get_threat_level_from_score,
-    CATEGORY_PREVALENCE_ESTIMATES,
-)
+from app.core.constants import CATEGORY_PREVALENCE_ESTIMATES
 from app.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -2294,15 +2286,6 @@ class AnomalyDetector:
             logger.warning(f"Competitive analysis failed: {e}")
             competitive_benchmark = None
 
-        # INVERTED FUNNEL: Enrich anomalies with threat level and commonness
-        inverted_funnel_data = self._enrich_with_inverted_funnel(
-            _all_anomalies=all_anomalies,
-            high_severity=stage6_result['high_severity'],
-            medium_severity=stage6_result['medium_severity'],
-            low_severity=stage6_result['low_severity'],
-            _industry=document_context.get('industry', 'general') if document_context else 'general'
-        )
-
         final_report = {
             'document_id': document_id,
             'company_name': company_name,
@@ -2318,8 +2301,6 @@ class AnomalyDetector:
             'ranking_metadata': stage6_result.get('ranking_metadata', {}),
             'pipeline_performance': pipeline_performance,
             'competitive_benchmark': competitive_benchmark,
-            # NEW: Inverted Funnel categorization
-            'inverted_funnel': inverted_funnel_data
         }
 
         # Log pipeline summary
@@ -2373,196 +2354,6 @@ class AnomalyDetector:
             explanation += f" Additionally, this clause is rare (found in only {prevalence*100:.0f}% of similar services)."
 
         return explanation
-
-    def _enrich_with_inverted_funnel(
-        self,
-        _all_anomalies: List[Dict[str, Any]],
-        high_severity: List[Dict[str, Any]],
-        medium_severity: List[Dict[str, Any]],
-        low_severity: List[Dict[str, Any]],
-        _industry: str = "general",
-    ) -> Dict[str, Any]:
-        """
-        Enrich anomalies with inverted funnel data (threat level + commonness).
-
-        Takes the existing anomalies and adds:
-        - threat_level: Based on consumer harm (CRITICAL/HIGH/MEDIUM/LOW/INFO)
-        - commonness_level: How common the pattern is (UNIVERSAL to VERY_RARE)
-        - display_category: Combined categorization for UI
-        - user_importance_score: Ranking score for user relevance
-
-        Args:
-            all_anomalies: All detected anomalies
-            high_severity: High severity alerts from Stage 6
-            medium_severity: Medium severity alerts from Stage 6
-            low_severity: Low severity alerts from Stage 6
-            industry: Industry for commonness context
-
-        Returns:
-            Dictionary with inverted funnel categorized anomalies
-        """
-        from app.core.constants import (
-            PATTERN_THREAT_LEVELS,
-            CommonnessThresholds,
-            UserImportanceConfig,
-        )
-
-        # Combine all alerts
-        all_alerts = high_severity + medium_severity + low_severity
-
-        # Categorize by display category
-        unusual_dangerous = []
-        common_dangerous = []
-        unusual_minor = []
-        standard_terms = []
-
-        # Track distributions
-        threat_distribution = {
-            'critical': 0,
-            'high': 0,
-            'medium': 0,
-            'low': 0,
-            'info': 0
-        }
-        commonness_distribution = {
-            'universal': 0,
-            'very_common': 0,
-            'common': 0,
-            'uncommon': 0,
-            'rare': 0,
-            'very_rare': 0
-        }
-
-        # Pattern frequency
-        pattern_counts = {}
-
-        for alert in all_alerts:
-            # Extract pattern/risk_category
-            risk_category = alert.get('risk_category', 'other')
-            detected_indicators = alert.get('detected_indicators', [])
-            patterns = [ind.get('name', '') for ind in detected_indicators] if detected_indicators else [risk_category]
-
-            # Get threat score (use highest from patterns)
-            threat_score = 5.0  # Default medium
-            for pattern in patterns:
-                score = PATTERN_THREAT_LEVELS.get(pattern, 5.0)
-                if score > threat_score:
-                    threat_score = score
-
-                # Count patterns
-                if pattern:
-                    pattern_counts[pattern] = pattern_counts.get(pattern, 0) + 1
-
-            # Get commonness from prevalence
-            prevalence = alert.get('prevalence', 0.30)
-            commonness_level = CommonnessThresholds.get_level(prevalence)
-
-            # NEW: Use RAG context to adjust threat score
-            # This prevents overinflation of standard industry clauses
-            rag_context = alert.get('rag_context')
-            if rag_context:
-                # Platform-required clauses (Apple, Google) = reduce threat significantly
-                if rag_context.get('is_platform_required'):
-                    threat_score = min(threat_score, 2.0)  # Cap at INFO level
-                    logger.debug(f"RAG: Reduced threat score to {threat_score} (platform-required)")
-                # Industry standard + high prevalence = reduce threat
-                elif rag_context.get('is_industry_standard') and prevalence >= 0.70:
-                    threat_score = min(threat_score, 4.0)  # Cap at LOW level
-                    logger.debug(f"RAG: Reduced threat score to {threat_score} (industry standard)")
-                # User-triggered liability = slightly reduce
-                elif rag_context.get('is_user_triggered') and threat_score > 6.0:
-                    threat_score = threat_score * 0.85  # 15% reduction
-                    logger.debug(f"RAG: Reduced threat score to {threat_score} (user-triggered)")
-                # Use RAG harm score if available and lower
-                elif rag_context.get('rag_risk_score') and rag_context['rag_risk_score'] < threat_score:
-                    # Blend RAG score with pattern score (60% RAG, 40% pattern)
-                    threat_score = (rag_context['rag_risk_score'] * 0.6) + (threat_score * 0.4)
-                    logger.debug(f"RAG: Blended threat score to {threat_score}")
-
-            # Calculate threat level
-            threat_level = get_threat_level_from_score(threat_score)
-
-            # Calculate user importance score
-            importance_score = UserImportanceConfig.calculate_importance(
-                threat_score=threat_score,
-                commonness=commonness_level
-            )
-
-            # Get display category
-            display_category = get_display_category(threat_level, commonness_level)
-
-            # Get human-readable threat description
-            threat_descriptions = {
-                ThreatLevel.CRITICAL: "This clause poses serious risk to consumers",
-                ThreatLevel.HIGH: "This clause significantly impacts your rights",
-                ThreatLevel.MEDIUM: "This clause is worth knowing about",
-                ThreatLevel.LOW: "Standard clause with some consumer implications",
-                ThreatLevel.INFO: "Standard legal boilerplate",
-            }
-
-            # Enrich the alert with inverted funnel data
-            enriched_alert = {
-                **alert,
-                'threat_level': threat_level.value,
-                'threat_score': threat_score,
-                'commonness_level': commonness_level.value,
-                'commonness_percentage': prevalence * 100,
-                'display_category': display_category.value,
-                'user_importance_score': importance_score,
-                'why_threatening': threat_descriptions.get(threat_level, ""),
-            }
-
-            # Update distributions
-            threat_distribution[threat_level.value] += 1
-            commonness_distribution[commonness_level.value] += 1
-
-            # Categorize into display buckets
-            if display_category == DisplayCategory.UNUSUAL_DANGEROUS:
-                unusual_dangerous.append(enriched_alert)
-            elif display_category == DisplayCategory.COMMON_DANGEROUS:
-                common_dangerous.append(enriched_alert)
-            elif display_category == DisplayCategory.UNUSUAL_MINOR:
-                unusual_minor.append(enriched_alert)
-            else:
-                standard_terms.append(enriched_alert)
-
-        # Sort each category by importance score
-        unusual_dangerous.sort(key=lambda x: x.get('user_importance_score', 0), reverse=True)
-        common_dangerous.sort(key=lambda x: x.get('user_importance_score', 0), reverse=True)
-        unusual_minor.sort(key=lambda x: x.get('user_importance_score', 0), reverse=True)
-        standard_terms.sort(key=lambda x: x.get('user_importance_score', 0), reverse=True)
-
-        # Top patterns
-        top_patterns = sorted(
-            [{'pattern': p, 'count': c} for p, c in pattern_counts.items()],
-            key=lambda x: x['count'],
-            reverse=True
-        )[:10]
-
-        logger.info(
-            f"Inverted Funnel enrichment: "
-            f"UNUSUAL_DANGEROUS={len(unusual_dangerous)}, "
-            f"COMMON_DANGEROUS={len(common_dangerous)}, "
-            f"UNUSUAL_MINOR={len(unusual_minor)}, "
-            f"STANDARD_TERMS={len(standard_terms)}"
-        )
-
-        return {
-            'unusual_dangerous': unusual_dangerous,
-            'common_dangerous': common_dangerous,
-            'unusual_minor': unusual_minor,
-            'standard_terms': standard_terms,
-            'category_summary': {
-                'unusual_dangerous_count': len(unusual_dangerous),
-                'common_dangerous_count': len(common_dangerous),
-                'unusual_minor_count': len(unusual_minor),
-                'standard_terms_count': len(standard_terms),
-            },
-            'threat_distribution': threat_distribution,
-            'commonness_distribution': commonness_distribution,
-            'top_patterns': top_patterns,
-        }
-
     def calculate_document_risk_score(
         self, anomalies: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
