@@ -2062,106 +2062,168 @@ class AnomalyDetector:
         # Build full document text for context detection
         full_document_text = "\n\n".join(document_text_parts)
 
-        # Run Stage 2 filtering (with Context-Aware Layer)
-        all_anomalies = await self.run_stage2(
-            stage1_results=all_anomalies,
-            document_context=document_context,
-            document_text=full_document_text
-        )
+        # Feature flag — short-circuit Stages 2-5 when PIPELINE_MODE=minimal.
+        # Stages 2-5 mostly re-rank or filter existing findings; they cannot
+        # recover anything Stage 1 missed. With the checklist-mode detector
+        # (DETECTION_MODE=checklist), Stage 1 already emits anchored findings,
+        # so the extra stages are often subtractive (Stage 2 occasionally
+        # drops valid checklist hits). Default "full" preserves historical
+        # behaviour; flip to "minimal" via env to A/B against the dashboard.
+        import os as _os
+        pipeline_mode = _os.getenv("PIPELINE_MODE", "full").lower()
 
-        # Capture Stage 2 metrics BEFORE Stage 3 clustering changes the list
-        stage2_passed_count = sum(1 for a in all_anomalies if a.get('proceed_to_stage3', False))
-        stage2_filtered_count = len(all_anomalies) - stage2_passed_count
-
-        logger.info(
-            f"Stage 2 complete: {stage2_passed_count} "
-            f"anomalies proceeding to Stage 3, {stage2_filtered_count} filtered out"
-        )
-
-        # STAGE 3: Apply clustering and deduplication
-        stage3_result = self.run_stage3(all_anomalies)
-
-        # Flatten clusters and noise back into anomaly list for backward compatibility
-        # Keep Stage 3 metadata attached to anomalies
-        clustered_anomalies = []
-
-        # Add representative anomalies from clusters
-        for cluster in stage3_result['clusters']:
-            clustered_anomalies.append(cluster['representative_anomaly'])
-
-        # Add noise anomalies
-        clustered_anomalies.extend(stage3_result['noise'])
-
-        # Store Stage 3 results for document-level reporting
-        for anomaly in clustered_anomalies:
-            anomaly['_stage3_result'] = {
-                'reduction_ratio': stage3_result['reduction_ratio'],
-                'original_count': stage3_result['original_count'],
-                'final_count': stage3_result['final_count'],
-                'n_clusters': stage3_result.get('n_clusters', 0),
-                'n_noise': stage3_result.get('n_noise', 0)
-            }
-
-        # Replace all_anomalies with clustered results
-        all_anomalies = clustered_anomalies
-
-        logger.info(
-            f"Stage 3 complete: Reduced from {stage3_result['original_count']} to "
-            f"{stage3_result['final_count']} anomalies ({stage3_result['reduction_ratio']:.1%} reduction)"
-        )
-
-        # STAGE 4: Detect compound risks using enhanced detector
-        stage4_result = self.run_stage4(
-            stage3_results=all_anomalies,
-            full_clauses=full_clauses
-        )
-
-        # Store Stage 4 results for document-level reporting
-        for anomaly in all_anomalies:
-            anomaly['_stage4_result'] = {
-                'compound_risk_score': stage4_result['compound_risk_assessment']['compound_risk_score'],
-                'compound_risk_level': stage4_result['compound_risk_assessment']['compound_risk_level'],
-                'patterns_detected': stage4_result['patterns_detected']
-            }
-            # Compound risks already added to individual anomalies by run_stage4()
-
-        # Store compound risks summary for document-level reporting
-        for anomaly in all_anomalies:
-            if "_compound_risks_summary" not in anomaly:
-                anomaly["_compound_risks_summary"] = stage4_result['compound_risks']
-
-        logger.info(
-            f"Stage 4 complete: {len(stage4_result['compound_risks'])} compound patterns detected, "
-            f"risk level: {stage4_result['compound_risk_assessment']['compound_risk_level']}"
-        )
-
-        # STAGE 5: Confidence Calibration
-        stage5_result = self.run_stage5(
-            stage4_anomalies=all_anomalies
-        )
-
-        # Replace anomalies with calibrated versions
-        all_anomalies = stage5_result['calibrated_anomalies']
-
-        # Store Stage 5 results for document-level reporting
-        for anomaly in all_anomalies:
-            anomaly['_stage5_result'] = {
-                'calibration_summary': stage5_result['calibration_summary'],
-                'stage5_complete': stage5_result['stage5_complete']
-            }
-
-        logger.info(
-            f"Stage 5 complete: {stage5_result['anomalies_calibrated']} anomalies calibrated"
-        )
-
-        if stage5_result.get('calibration_summary'):
-            summary = stage5_result['calibration_summary']
+        if pipeline_mode == "minimal":
             logger.info(
-                f"  Calibration: avg_adjustment={summary.get('avg_adjustment', 0):+.3f}, "
-                f"HIGH={summary.get('high_confidence_count', 0)}, "
-                f"MODERATE={summary.get('moderate_confidence_count', 0)}, "
-                f"LOW={summary.get('low_confidence_count', 0)}"
+                f"PIPELINE_MODE=minimal — passing {len(all_anomalies)} Stage 1 "
+                f"anomalies directly to Stage 6 (Stages 2/3/4/5 skipped)"
             )
+            stage2_passed_count = len(all_anomalies)
+            stage2_filtered_count = 0
+            stage3_result = {
+                "final_count": len(all_anomalies),
+                "original_count": len(all_anomalies),
+                "reduction_ratio": 0.0,
+                "clusters": [],
+                "noise": list(all_anomalies),
+                "n_clusters": 0,
+                "n_noise": len(all_anomalies),
+            }
+            stage4_result = {
+                "compound_risks": [],
+                "compound_risk_assessment": {
+                    "compound_risk_score": 0.0,
+                    "compound_risk_level": "low",
+                },
+                "patterns_detected": [],
+            }
+            stage5_result = {
+                "calibrated_anomalies": all_anomalies,
+                "calibration_summary": {},
+                "stage5_complete": False,
+                "anomalies_calibrated": 0,
+            }
+            neutral_stage3 = {
+                "reduction_ratio": 0.0,
+                "original_count": len(all_anomalies),
+                "final_count": len(all_anomalies),
+                "n_clusters": 0,
+                "n_noise": len(all_anomalies),
+            }
+            neutral_stage4 = {
+                "compound_risk_score": 0.0,
+                "compound_risk_level": "low",
+                "patterns_detected": [],
+            }
+            neutral_stage5 = {
+                "calibration_summary": {},
+                "stage5_complete": False,
+            }
+            for a in all_anomalies:
+                a.setdefault("proceed_to_stage3", True)
+                a.setdefault("_stage3_result", neutral_stage3)
+                a.setdefault("_stage4_result", neutral_stage4)
+                a.setdefault("_stage5_result", neutral_stage5)
+                a.setdefault("_compound_risks_summary", [])
+        else:
+            all_anomalies = await self.run_stage2(
+                stage1_results=all_anomalies,
+                document_context=document_context,
+                document_text=full_document_text
+            )
+
+            # Capture Stage 2 metrics BEFORE Stage 3 clustering changes the list
+            stage2_passed_count = sum(1 for a in all_anomalies if a.get('proceed_to_stage3', False))
+            stage2_filtered_count = len(all_anomalies) - stage2_passed_count
+
+            logger.info(
+                f"Stage 2 complete: {stage2_passed_count} "
+                f"anomalies proceeding to Stage 3, {stage2_filtered_count} filtered out"
+            )
+
+            # STAGE 3: Apply clustering and deduplication
+            stage3_result = self.run_stage3(all_anomalies)
+
+            # Flatten clusters and noise back into anomaly list for backward compatibility
+            # Keep Stage 3 metadata attached to anomalies
+            clustered_anomalies = []
+
+            # Add representative anomalies from clusters
+            for cluster in stage3_result['clusters']:
+                clustered_anomalies.append(cluster['representative_anomaly'])
+
+            # Add noise anomalies
+            clustered_anomalies.extend(stage3_result['noise'])
+
+            # Store Stage 3 results for document-level reporting
+            for anomaly in clustered_anomalies:
+                anomaly['_stage3_result'] = {
+                    'reduction_ratio': stage3_result['reduction_ratio'],
+                    'original_count': stage3_result['original_count'],
+                    'final_count': stage3_result['final_count'],
+                    'n_clusters': stage3_result.get('n_clusters', 0),
+                    'n_noise': stage3_result.get('n_noise', 0)
+                }
+
+            # Replace all_anomalies with clustered results
+            all_anomalies = clustered_anomalies
+
+            logger.info(
+                f"Stage 3 complete: Reduced from {stage3_result['original_count']} to "
+                f"{stage3_result['final_count']} anomalies ({stage3_result['reduction_ratio']:.1%} reduction)"
+            )
+
+            # STAGE 4: Detect compound risks using enhanced detector
+            stage4_result = self.run_stage4(
+                stage3_results=all_anomalies,
+                full_clauses=full_clauses
+            )
+
+            # Store Stage 4 results for document-level reporting
+            for anomaly in all_anomalies:
+                anomaly['_stage4_result'] = {
+                    'compound_risk_score': stage4_result['compound_risk_assessment']['compound_risk_score'],
+                    'compound_risk_level': stage4_result['compound_risk_assessment']['compound_risk_level'],
+                    'patterns_detected': stage4_result['patterns_detected']
+                }
+                # Compound risks already added to individual anomalies by run_stage4()
+
+            # Store compound risks summary for document-level reporting
+            for anomaly in all_anomalies:
+                if "_compound_risks_summary" not in anomaly:
+                    anomaly["_compound_risks_summary"] = stage4_result['compound_risks']
+
+            logger.info(
+                f"Stage 4 complete: {len(stage4_result['compound_risks'])} compound patterns detected, "
+                f"risk level: {stage4_result['compound_risk_assessment']['compound_risk_level']}"
+            )
+
+            # STAGE 5: Confidence Calibration
+            stage5_result = self.run_stage5(
+                stage4_anomalies=all_anomalies
+            )
+
+            # Replace anomalies with calibrated versions
+            all_anomalies = stage5_result['calibrated_anomalies']
+
+            # Store Stage 5 results for document-level reporting
+            for anomaly in all_anomalies:
+                anomaly['_stage5_result'] = {
+                    'calibration_summary': stage5_result['calibration_summary'],
+                    'stage5_complete': stage5_result['stage5_complete']
+                }
+
+            logger.info(
+                f"Stage 5 complete: {stage5_result['anomalies_calibrated']} anomalies calibrated"
+            )
+
+            if stage5_result.get('calibration_summary'):
+                summary = stage5_result['calibration_summary']
+                logger.info(
+                    f"  Calibration: avg_adjustment={summary.get('avg_adjustment', 0):+.3f}, "
+                    f"HIGH={summary.get('high_confidence_count', 0)}, "
+                    f"MODERATE={summary.get('moderate_confidence_count', 0)}, "
+                    f"LOW={summary.get('low_confidence_count', 0)}"
+                )
 
         # STAGE 6: Alert Ranking & Budget Management
         stage6_result = self.run_stage6(
