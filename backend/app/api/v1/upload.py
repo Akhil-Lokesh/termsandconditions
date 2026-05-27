@@ -269,6 +269,7 @@ async def run_anomaly_detection_background(
                 clause_number=anomaly_data.get("clause_number", "0"),
                 clause_text=anomaly_data.get("clause_text", ""),
                 severity=anomaly_data.get("severity", "low"),
+                risk_title=(anomaly_data.get("risk_title") or "")[:200] or None,
                 explanation=anomaly_data.get("explanation", ""),
                 consumer_impact=anomaly_data.get("consumer_impact", ""),
                 recommendation=anomaly_data.get("recommendation", ""),

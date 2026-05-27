@@ -49,6 +49,7 @@ def _anomaly_to_ranked_dict(anomaly: Anomaly) -> dict:
         "clause_text": anomaly.clause_text or "",
         "section": anomaly.section,
         "severity": severity,
+        "risk_title": getattr(anomaly, "risk_title", None) or None,
         "risk_category": anomaly.risk_category or "other",
         "prevalence": anomaly.prevalence,
         "explanation": anomaly.explanation,

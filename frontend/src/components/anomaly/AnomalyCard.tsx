@@ -37,7 +37,7 @@ export const AnomalyCard = ({ anomaly }: AnomalyCardProps) => {
                 {anomaly.clause_number && ` - ${anomaly.clause_number}`}
               </span>
             </div>
-            <h3 className="font-display font-semibold text-sm lg:text-base text-foreground">Risk Detected</h3>
+            <h3 className="font-display font-semibold text-sm lg:text-base text-foreground">{anomaly.risk_title || "Risk Detected"}</h3>
           </div>
           <SeverityBadge severity={anomaly.severity} />
         </div>

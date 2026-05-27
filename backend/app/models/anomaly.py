@@ -19,6 +19,7 @@ class Anomaly(Base):
     section = Column(String, nullable=True)
     clause_number = Column(String, nullable=True)
     severity = Column(String, nullable=False)  # low, medium, high
+    risk_title = Column(String(200), nullable=True)  # 5-8 word concrete title from LLM
     explanation = Column(Text, nullable=True)
     consumer_impact = Column(Text, nullable=True)  # How this affects consumers
     recommendation = Column(Text, nullable=True)  # What users should know

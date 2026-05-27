@@ -86,6 +86,7 @@ export interface Anomaly {
   consumer_impact?: string;
   recommendation?: string;
   risk_category?: string;
+  risk_title?: string;
 }
 
 // Competitive Benchmark Types
