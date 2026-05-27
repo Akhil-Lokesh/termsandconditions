@@ -227,7 +227,36 @@ async def run_anomaly_detection_background(
             detection_result.get('medium_severity_alerts', []) +
             detection_result.get('low_severity_alerts', [])
         )
-        
+
+        # Second pass: missing-protections check. Asks Claude which expected
+        # consumer protections (arbitration opt-out, data deletion right, etc.)
+        # are ABSENT from the doc. Adds them as additional findings tagged
+        # detection_source="missing_protection" so the UI can section them.
+        # Feature-flagged for safety; default ON.
+        if os.getenv("MISSING_PROTECTIONS_CHECK", "true").lower() == "true":
+            try:
+                from app.core.llm_clause_detector import LLMClauseDetector
+                from app.services.claude_service import ClaudeService
+                # Reconstruct flat document text from the structured sections
+                full_text = "\n\n".join(
+                    str(c.get("text", "")) for s in (sections or [])
+                    for c in (s.get("clauses", []) if isinstance(s, dict) else [])
+                )
+                if len(full_text.strip()) >= 200:
+                    mp_detector = LLMClauseDetector(ClaudeService())
+                    missing_findings = await mp_detector.detect_missing_protections(
+                        document_text=full_text,
+                        company_name=company_name,
+                    )
+                    if missing_findings:
+                        logger.info(
+                            f"Missing-protections check added "
+                            f"{len(missing_findings)} findings"
+                        )
+                        all_anomalies = all_anomalies + missing_findings
+            except Exception as exc:
+                logger.warning(f"Missing-protections check failed (non-fatal): {exc}")
+
         # Get risk score directly from the pipeline result
         overall_risk_score = detection_result.get('overall_risk_score', 0.0)
         
