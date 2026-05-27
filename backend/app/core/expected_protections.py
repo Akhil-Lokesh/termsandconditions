@@ -31,6 +31,15 @@ class ExpectedProtection(TypedDict, total=False):
     category: str
     description: str
     keywords: List[str]
+    # When True, the LLM must first establish that the protection is
+    # RELEVANT to this specific document type/jurisdiction/feature set
+    # before reporting it as absent. Some protections only apply when
+    # the doc has the corresponding risk (e.g., arbitration_opt_out
+    # only matters if the doc imposes binding arbitration).
+    requires_context: bool
+    # Plain-English statement of what makes this protection RELEVANT.
+    # Used by the LLM to gate the absence check.
+    relevance_test: str
 
 
 EXPECTED_PROTECTIONS: List[ExpectedProtection] = [
@@ -42,6 +51,8 @@ EXPECTED_PROTECTIONS: List[ExpectedProtection] = [
         "category": "arbitration",
         "description": "If the doc imposes binding arbitration, users should have a 30-day window to opt out without penalty. Absence locks users into arbitration with no escape.",
         "keywords": ["opt out", "opt-out", "30 days", "reject arbitration"],
+        "requires_context": True,
+        "relevance_test": "Only relevant if the document imposes binding individual arbitration. UK / EU consumer terms typically do not — they preserve court access. If the doc does not force arbitration, mark this protection 'not_applicable'.",
     },
     {
         "id": "small_claims_carve_out",
@@ -50,6 +61,8 @@ EXPECTED_PROTECTIONS: List[ExpectedProtection] = [
         "category": "arbitration",
         "description": "Even with binding arbitration, users should retain the right to pursue claims in small-claims court for low-value disputes.",
         "keywords": ["small claims", "small-claims court"],
+        "requires_context": True,
+        "relevance_test": "Only relevant if the doc imposes arbitration. If the doc preserves court access, mark 'not_applicable'.",
     },
     {
         "id": "injunctive_relief_preserved",
@@ -92,6 +105,8 @@ EXPECTED_PROTECTIONS: List[ExpectedProtection] = [
         "category": "privacy",
         "description": "Users should be able to opt out of cross-context behavioral / targeted advertising (CCPA, GDPR, GPC).",
         "keywords": ["opt out of advertising", "do not sell", "do not share", "targeted ads"],
+        "requires_context": True,
+        "relevance_test": "Only relevant if the doc describes behavioral / cross-context / targeted advertising or data sale. Subscription-only services (e.g. Apple Music, Netflix) that don't run ad networks should mark this 'not_applicable'.",
     },
     {
         "id": "retention_period_specific",
@@ -134,6 +149,8 @@ EXPECTED_PROTECTIONS: List[ExpectedProtection] = [
         "category": "payment",
         "description": "If the company terminates the relationship without cause, users should receive a pro-rata refund of any prepaid amounts.",
         "keywords": ["refund", "pro-rata", "prepaid"],
+        "requires_context": True,
+        "relevance_test": "Only relevant for paid services (subscriptions, prepaid credits, virtual currency). Free-only services should mark 'not_applicable'.",
     },
 
     # ---- Content / IP -----------------------------------------------------
@@ -144,15 +161,15 @@ EXPECTED_PROTECTIONS: List[ExpectedProtection] = [
         "category": "content",
         "description": "When a user deletes their content (or their account), the company's license to that content should end.",
         "keywords": ["license terminates", "license ends", "when you delete"],
+        "requires_context": True,
+        "relevance_test": "Only relevant if the doc grants the company a license over user-generated content. Pure consumption services (music streaming, video streaming) where users don't upload content should mark 'not_applicable'.",
     },
-    {
-        "id": "moral_rights_preserved",
-        "title": "Moral rights preserved",
-        "severity_if_missing": "medium_if_missing",
-        "category": "rights",
-        "description": "The doc should NOT include a blanket moral-rights waiver. (This is the inverse of the moral_rights_waiver risk pattern — absence of the waiver is the protective state.)",
-        "keywords": ["moral rights"],
-    },
+    # (REMOVED: moral_rights_preserved — inverted logic. The protective
+    # state IS the absence of a waiver, so the present/partial/absent
+    # framing produces the wrong signal. The corresponding risk pattern
+    # `moral_rights_waiver` in risk_patterns.py covers the positive case
+    # — if the doc waives moral rights, that fires; if it doesn't waive
+    # them, no finding is needed.)
 
     # ---- Liability / fairness --------------------------------------------
     {

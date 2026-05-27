@@ -271,6 +271,44 @@ RISK_PATTERNS: List[RiskPattern] = [
         "example": "We may modify these Terms with reasonable advance notice. Your continued use after the effective date constitutes acceptance.",
     },
 
+    # ---- HIGH / MEDIUM — added 2026-05-27 after first dashboard run ----- #
+    {
+        "id": "law_enforcement_disclosure_no_notice",
+        "title": "Law enforcement disclosure without notice",
+        "severity": "high",
+        "category": "privacy",
+        "description": "Company discloses user data to law enforcement without notifying the affected user, even when not legally prohibited from doing so.",
+        "example": "We may disclose your information to law enforcement or government authorities in response to lawful requests, without notifying you.",
+        "aliases": ["law enforcement", "government authorities", "lawful requests"],
+    },
+    {
+        "id": "sole_remedy_company_discretion",
+        "title": "Sole remedy at company discretion",
+        "severity": "high",
+        "category": "liability",
+        "description": "User's only remedy for a service failure is whatever the company unilaterally decides to offer (e.g., 'replacement or refund as determined by Company').",
+        "example": "Your sole and exclusive remedy shall be, at Company's option, replacement of the affected content or a refund of the amount paid.",
+        "aliases": ["sole remedy", "exclusive remedy", "at Apple's option", "in our sole discretion"],
+    },
+    {
+        "id": "cascading_payment_charges",
+        "title": "Cascading payment method charges",
+        "severity": "medium",
+        "category": "payment",
+        "description": "If the primary payment method fails, the company may charge any other payment method on file (Family Sharing payer, backup card, etc.) without explicit per-charge consent.",
+        "example": "If your primary payment method cannot be charged, you authorize us to charge any other payment method associated with your account.",
+        "aliases": ["any payment method", "backup payment", "family payer"],
+    },
+    {
+        "id": "free_trial_no_reactivation",
+        "title": "Free trial cannot be reactivated",
+        "severity": "medium",
+        "category": "payment",
+        "description": "Once a free trial is used, the user cannot start another even after a long absence. Creates pressure to subscribe before the trial expires.",
+        "example": "Free trials are available only to customers who have not previously had a free trial of this service.",
+        "aliases": ["one-time trial", "trial already used", "not eligible for trial"],
+    },
+
     # ---- LOW (boilerplate) ------------------------------------------------
     {
         "id": "governing_law_reasonable",
