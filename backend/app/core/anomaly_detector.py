@@ -2062,15 +2062,12 @@ class AnomalyDetector:
         # Build full document text for context detection
         full_document_text = "\n\n".join(document_text_parts)
 
-        # Feature flag — short-circuit Stages 2-5 when PIPELINE_MODE=minimal.
-        # Stages 2-5 mostly re-rank or filter existing findings; they cannot
-        # recover anything Stage 1 missed. With the checklist-mode detector
-        # (DETECTION_MODE=checklist), Stage 1 already emits anchored findings,
-        # so the extra stages are often subtractive (Stage 2 occasionally
-        # drops valid checklist hits). Default "full" preserves historical
-        # behaviour; flip to "minimal" via env to A/B against the dashboard.
+        # Feature flag — Stages 2-5 are subtractive on top of the checklist
+        # detector and have been deleted from the codebase. The flag is
+        # retained only so the legacy "full" path is preserved during the
+        # in-progress refactor. Default is "minimal".
         import os as _os
-        pipeline_mode = _os.getenv("PIPELINE_MODE", "full").lower()
+        pipeline_mode = _os.getenv("PIPELINE_MODE", "minimal").lower()
 
         if pipeline_mode == "minimal":
             logger.info(
