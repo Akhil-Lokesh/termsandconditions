@@ -75,6 +75,17 @@ class StructureExtractor:
         r"^○\s+(.+)",  # "○ Bullet point"
     ]
 
+    # Maximum words in a single clause handed to the LLM checklist. Documents
+    # delivered as one unbroken line (no newlines, headers glued inline — e.g.
+    # the Apple Media Services T&C) defeat every newline-based splitter and
+    # collapse into ONE 8k-word clause. The checklist then has to exhaustively
+    # search a wall of text, which LLMs do unreliably and non-deterministically
+    # (buried clauses are missed; findings flicker between runs). Any clause
+    # larger than this is split on sentence boundaries so the matcher always
+    # sees digestible passages. Well-structured docs already produce small
+    # clauses, so this is a no-op for them.
+    MAX_CLAUSE_WORDS = 200
+
     def __init__(self, debug: bool = False):
         """Initialize structure extractor.
 
@@ -317,7 +328,7 @@ class StructureExtractor:
                     logger.debug(
                         f"  Clause pattern matched: {pattern} ({len(found_clauses)} clauses)"
                     )
-                return found_clauses
+                return self._bound_clause_sizes(found_clauses)
 
         # Try bullet patterns
         for pattern in self.BULLET_PATTERNS:
@@ -333,7 +344,7 @@ class StructureExtractor:
                 for clause in found_clauses:
                     if "id" not in clause:
                         clause["id"] = str(found_clauses.index(clause) + 1)
-                return found_clauses
+                return self._bound_clause_sizes(found_clauses)
 
         # Fallback: treat entire section as one clause
         if self.debug and len(section_text) > 100:
@@ -341,7 +352,65 @@ class StructureExtractor:
                 f"  No clause pattern matched, using entire section as 1 clause"
             )
 
-        return [{"id": "1", "text": section_text}]
+        return self._bound_clause_sizes([{"id": "1", "text": section_text}])
+
+    def _bound_clause_sizes(
+        self, clauses: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Split any clause exceeding ``MAX_CLAUSE_WORDS`` into sentence-bounded
+        sub-clauses, so the LLM checklist never receives an un-searchable wall
+        of text. Clauses already within the cap pass through untouched (so
+        well-structured documents are unaffected). Sub-clauses inherit the
+        parent id with a ``.1``, ``.2`` suffix to keep clause identity traceable.
+        """
+        bounded: List[Dict[str, Any]] = []
+        for clause in clauses:
+            text = (clause.get("text") or "").strip()
+            if len(text.split()) <= self.MAX_CLAUSE_WORDS:
+                bounded.append(clause)
+                continue
+
+            base_id = str(clause.get("id", len(bounded) + 1))
+            for sub_idx, chunk in enumerate(self._split_to_word_cap(text), start=1):
+                sub = dict(clause)
+                sub["id"] = f"{base_id}.{sub_idx}"
+                sub["text"] = chunk
+                bounded.append(sub)
+        return bounded
+
+    def _split_to_word_cap(self, text: str) -> List[str]:
+        """Greedily group sentences into passages of at most ``MAX_CLAUSE_WORDS``
+        words. Splits on sentence boundaries to keep passages coherent; if a
+        single sentence still exceeds the cap (rare — e.g. a long all-caps
+        liability paragraph), it is hard-split on word count as a last resort.
+        """
+        # Sentence boundary: end punctuation followed by whitespace. Works on
+        # both normal prose and the no-newline wall-of-text case.
+        sentences = re.split(r"(?<=[.!?])\s+", text)
+        passages: List[str] = []
+        current: List[str] = []
+        current_words = 0
+        for sentence in sentences:
+            sentence = sentence.strip()
+            if not sentence:
+                continue
+            words = sentence.split()
+            # A lone sentence longer than the cap: flush, then hard-split it.
+            if len(words) > self.MAX_CLAUSE_WORDS:
+                if current:
+                    passages.append(" ".join(current))
+                    current, current_words = [], 0
+                for start in range(0, len(words), self.MAX_CLAUSE_WORDS):
+                    passages.append(" ".join(words[start : start + self.MAX_CLAUSE_WORDS]))
+                continue
+            if current_words + len(words) > self.MAX_CLAUSE_WORDS and current:
+                passages.append(" ".join(current))
+                current, current_words = [], 0
+            current.append(sentence)
+            current_words += len(words)
+        if current:
+            passages.append(" ".join(current))
+        return passages
 
     async def _extract_clauses_with_pattern(
         self, text: str, pattern: str
