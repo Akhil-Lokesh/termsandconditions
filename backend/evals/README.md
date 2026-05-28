@@ -1,15 +1,15 @@
 # T&C Anomaly Detection Eval Harness
 
-A minimal, labeled-data evaluation harness for the 6-stage anomaly detection
-pipeline in `backend/app/core/anomaly_detector.py`. Detection quality is
-primarily driven by `LLMClauseDetector` (Claude batch), and this harness is
-the first quantitative measurement of that quality.
+A minimal, labeled-data evaluation harness for the anomaly detection pipeline
+orchestrated in `backend/app/core/anomaly_detector.py`. Detection quality is
+primarily driven by `LLMClauseDetector` (Claude batch, checklist mode), and
+this harness is the first quantitative measurement of that quality.
 
 ## Purpose
 
-`pytest` covers ~357 unit and integration tests, but none measure whether the
-LLM-driven pipeline actually returns the right severity and risk category on
-real-world ToS clauses. This harness gives you:
+The `pytest` suite covers the plumbing (upload, parsing, ranking), but none of
+it measures whether the LLM-driven detector actually returns the right severity
+and risk category on real-world ToS clauses. This harness gives you:
 
 - A small, hand-labeled seed of CUAD- and ContractEval-inspired clauses.
 - Per-severity precision / recall / F1, macro and micro aggregates.
