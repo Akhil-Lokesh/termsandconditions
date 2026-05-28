@@ -124,7 +124,9 @@ async def test_services_initialized():
     # Test Embedding Service
     embedding_service = EmbeddingService()
     embedding = await embedding_service.create_embedding("test")
-    assert len(embedding) == 384  # all-MiniLM-L6-v2 dimension
+    # Service produces 384-dim (all-MiniLM-L6-v2) padded to the Pinecone index
+    # dimension; the returned vector is the padded one.
+    assert len(embedding) == embedding_service.embedding_dim
     
     # Test Pinecone
     pinecone = PineconeService()

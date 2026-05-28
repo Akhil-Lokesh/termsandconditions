@@ -20,6 +20,7 @@ Public surface preserved for callers in ``app/api/v1/``:
 from __future__ import annotations
 
 import os
+import re
 import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -40,6 +41,9 @@ logger = setup_logger(__name__)
 # critical or a couple of highs land a document around 7/10 ("High Risk").
 _SEVERITY_WEIGHTS = {"critical": 4.0, "high": 2.0, "medium": 0.7, "low": 0.2}
 _RISK_SCORE_CAP = 30.0
+
+# Ordinal ranking for keeping the most severe instance when collapsing duplicates.
+_SEVERITY_RANK = {"critical": 3, "high": 2, "medium": 1, "low": 0}
 
 
 class AnomalyDetector:
@@ -118,6 +122,16 @@ class AnomalyDetector:
             except Exception as exc:
                 logger.warning(f"[detect] missing-protections check failed (non-fatal): {exc}")
 
+        # ---- Collapse duplicate findings --------------------------------- #
+        # The LLM emits one finding per clause, so a risk that appears in several
+        # clauses (e.g. "termination on suspicion" in 4 sections) surfaces as N
+        # near-identical alerts. Collapse by risk title so each distinct risk is
+        # one finding — matching how a human reviewer / benchmark counts them.
+        pre_dedup = len(findings)
+        findings = _dedupe_findings(findings)
+        if len(findings) != pre_dedup:
+            logger.info(f"[detect] dedup collapsed {pre_dedup} -> {len(findings)} findings")
+
         # ---- Rank + bucket ------------------------------------------------ #
         ranked = self.alert_ranker.rank_and_filter(
             calibrated_anomalies=findings,
@@ -190,6 +204,40 @@ def _flatten_sections(sections: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 "clause_number": str(seq),
             })
     return clauses
+
+
+def _dedupe_findings(findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Collapse findings that represent the SAME risk into one.
+
+    A pattern matched in several clauses produces several near-identical findings.
+    Catalog findings are keyed by pattern_id (stable identity even when the LLM
+    phrases the title differently); "novel"/off-catalog findings are keyed by a
+    normalised title (so distinct novel risks are preserved). The highest-severity
+    instance survives; insertion order is preserved.
+    """
+    best: Dict[str, Dict[str, Any]] = {}
+    order: List[str] = []
+    for f in findings:
+        pid = (f.get("pattern_id") or "").strip().lower()
+        # Normalise title: lowercase, drop punctuation, collapse whitespace.
+        title = re.sub(r"[^a-z0-9 ]", "", (f.get("risk_title") or "").lower())
+        title = re.sub(r"\s+", " ", title).strip()
+        if pid and pid not in ("novel", "none"):
+            key = "pattern:" + pid
+        elif title:
+            key = "title:" + title
+        else:
+            key = "expl:" + (f.get("explanation") or "").strip().lower()[:80]
+
+        cur = best.get(key)
+        if cur is None:
+            best[key] = f
+            order.append(key)
+        elif _SEVERITY_RANK.get(f.get("severity", "low"), 0) > _SEVERITY_RANK.get(
+            cur.get("severity", "low"), 0
+        ):
+            best[key] = f
+    return [best[k] for k in order]
 
 
 def _calculate_risk_score(

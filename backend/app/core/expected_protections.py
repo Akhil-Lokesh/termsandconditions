@@ -64,14 +64,10 @@ EXPECTED_PROTECTIONS: List[ExpectedProtection] = [
         "requires_context": True,
         "relevance_test": "Only relevant if the doc imposes arbitration. If the doc preserves court access, mark 'not_applicable'.",
     },
-    {
-        "id": "injunctive_relief_preserved",
-        "title": "Right to seek injunctive relief",
-        "severity_if_missing": "low_if_missing",
-        "category": "arbitration",
-        "description": "Right to seek injunctive or equitable relief (typically reserved by the company; consumer protection requires symmetry).",
-        "keywords": ["injunctive", "equitable relief"],
-    },
+    # (REMOVED: injunctive_relief_preserved — inverted logic, same class as
+    # moral_rights_preserved. Nearly every ToS reserves injunctive relief for the
+    # company only; flagging the absence of a symmetric consumer right fired as a
+    # false positive on almost every document.)
 
     # ---- Data protection / privacy ---------------------------------------
     {
@@ -115,6 +111,8 @@ EXPECTED_PROTECTIONS: List[ExpectedProtection] = [
         "category": "data",
         "description": "Concrete retention periods (e.g., '24 months after last login') rather than vague 'as long as necessary'.",
         "keywords": ["retention period", "we retain", "we will keep"],
+        "requires_context": True,
+        "relevance_test": "Only relevant for documents that collect and store personal data (privacy policies, or a ToS with a data-handling section). A pure ToS with no personal-data processing should mark 'not_applicable'.",
     },
     {
         "id": "breach_notification",
@@ -123,6 +121,8 @@ EXPECTED_PROTECTIONS: List[ExpectedProtection] = [
         "category": "data",
         "description": "Commitment to notify users of data breaches affecting their personal data, with a timeline.",
         "keywords": ["data breach", "notify you", "security incident"],
+        "requires_context": True,
+        "relevance_test": "Only relevant for documents that collect and store personal data (privacy policies, or a ToS with a data-handling section). A pure ToS with no personal-data processing should mark 'not_applicable'.",
     },
 
     # ---- Account / service ------------------------------------------------
@@ -133,6 +133,8 @@ EXPECTED_PROTECTIONS: List[ExpectedProtection] = [
         "category": "modification",
         "description": "Material changes to the terms should be communicated with reasonable advance notice (typically 30 days) and an opportunity to disagree.",
         "keywords": ["advance notice", "30 days notice", "we will notify you"],
+        "requires_context": True,
+        "relevance_test": "Only relevant if the document reserves a right to modify the terms (e.g. 'we may update these terms'). A fixed agreement with no unilateral modification clause should mark 'not_applicable'.",
     },
     {
         "id": "termination_appeals_process",
@@ -141,6 +143,8 @@ EXPECTED_PROTECTIONS: List[ExpectedProtection] = [
         "category": "termination",
         "description": "Users should be able to appeal an account termination decision through a defined process.",
         "keywords": ["appeal", "request reinstatement", "challenge our decision"],
+        "requires_context": True,
+        "relevance_test": "Only relevant for services with user accounts that can be terminated or suspended. A document with no account model should mark 'not_applicable'.",
     },
     {
         "id": "refund_on_termination",
@@ -179,6 +183,8 @@ EXPECTED_PROTECTIONS: List[ExpectedProtection] = [
         "category": "liability",
         "description": "Statement that nothing in the agreement limits rights consumers have under applicable consumer-protection law.",
         "keywords": ["nothing in this", "consumer rights", "statutory rights"],
+        "requires_context": True,
+        "relevance_test": "Only relevant where mandatory consumer-protection law applies (UK / EU / Australia consumer contracts). A US-only or B2B agreement may legitimately omit it — mark 'not_applicable' if the doc shows no consumer-law jurisdiction.",
     },
 ]
 

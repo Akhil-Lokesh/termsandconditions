@@ -26,8 +26,10 @@ class AlertRanker:
         MAX_ALERTS: Maximum total alerts to show (100)
     """
 
-    # Alert budget constant (set high to show all anomalies)
-    MAX_ALERTS = 100
+    # Alert budget constant. Set high because the product goal is recall-first:
+    # we surface every genuine risk. Only LOW-severity findings are ever trimmed
+    # (see rank_and_filter) since suppressed alerts are not surfaced downstream.
+    MAX_ALERTS = 500
 
     # Severity weights for scoring (increased gap for critical)
     SEVERITY_WEIGHTS = {
@@ -173,33 +175,20 @@ class AlertRanker:
             f"LOW={len(low_severity)}"
         )
 
-        # STEP 5: Enforce alert budget (trim within each severity bucket)
+        # STEP 5: Enforce alert budget. Recall-first: HIGH and MEDIUM findings are
+        # NEVER suppressed (suppressed alerts are not surfaced downstream, so
+        # dropping them would silently lose true positives). Only LOW is trimmed,
+        # and only when the total exceeds the budget.
         if not self.user_preferences.get('show_all', False):
-            total = len(high_severity) + len(medium_severity) + len(low_severity)
-            if total > self.MAX_ALERTS:
-                # Keep all high, trim medium/low if over budget
-                remaining_budget = self.MAX_ALERTS - len(high_severity)
-                if remaining_budget <= 0:
-                    # Too many high alerts — trim high, drop medium/low
-                    suppressed = high_severity[self.MAX_ALERTS:] + medium_severity + low_severity
-                    high_severity = high_severity[:self.MAX_ALERTS]
-                    medium_severity = []
-                    low_severity = []
-                else:
-                    if len(medium_severity) <= remaining_budget:
-                        remaining_budget -= len(medium_severity)
-                    else:
-                        suppressed = medium_severity[remaining_budget:]
-                        medium_severity = medium_severity[:remaining_budget]
-                        remaining_budget = 0
-
-                    if remaining_budget > 0 and len(low_severity) > remaining_budget:
-                        suppressed += low_severity[remaining_budget:]
-                        low_severity = low_severity[:remaining_budget]
+            kept_non_low = len(high_severity) + len(medium_severity)
+            low_budget = max(0, self.MAX_ALERTS - kept_non_low)
+            if len(low_severity) > low_budget:
+                suppressed = low_severity[low_budget:]
+                low_severity = low_severity[:low_budget]
 
             logger.info(
                 f"Alert budget: {len(high_severity)} HIGH, {len(medium_severity)} MEDIUM, "
-                f"{len(low_severity)} LOW, {len(suppressed)} suppressed"
+                f"{len(low_severity)} LOW, {len(suppressed)} suppressed (LOW only)"
             )
         else:
             logger.info("User preference 'show_all' enabled, bypassing alert budget")
