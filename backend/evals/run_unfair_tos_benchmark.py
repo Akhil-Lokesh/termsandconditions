@@ -40,29 +40,34 @@ from evals.baseline_runner import (  # noqa: E402
     _build_report,
     _detect,
 )
+from evals.metrics.severity import SEVERITY_TIER as _TIER  # noqa: E402
 
 logger = logging.getLogger(__name__)
-
-_TIER = {"none": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}
 
 
 def _ordinal_metrics(
     predictions: List[Dict[str, Any]], labels: List[Dict[str, Any]]
 ) -> Dict[str, Any]:
-    """Recall + ordinal severity metrics that the base-rate-sensitive kappa hides."""
-    n = len(labels)
-    flagged = sum(1 for p in predictions if p.get("severity"))
+    """Recall + ordinal severity stats over RISK-bearing clauses only.
+
+    Recall is computed over gold-risk clauses (excluding fair "none" clauses —
+    those are the false-positive denominator, handled separately). Severity
+    exact/within-1/under/over are likewise restricted to real-risk gold tiers.
+    """
+    flagged = 0
+    positives = 0
     exact = 0
     within1 = 0
     under = 0  # detector rated LOWER than benchmark
     over = 0   # detector rated HIGHER than benchmark
-    scored = 0
     for p, l in zip(predictions, labels):
         gold = l.get("expected_severity")
-        if gold not in _TIER:
-            continue
-        scored += 1
+        if gold not in _TIER or gold == "none":
+            continue  # skip fair negatives + unlabeled
+        positives += 1
         pred = p.get("severity") or "none"
+        if pred != "none":
+            flagged += 1
         gi, pi = _TIER[gold], _TIER.get(pred, 0)
         if pi == gi:
             exact += 1
@@ -73,12 +78,12 @@ def _ordinal_metrics(
         elif pi > gi:
             over += 1
     return {
-        "n": n,
-        "recall_flagged": round(flagged / n, 4) if n else 0.0,
-        "severity_exact": round(exact / scored, 4) if scored else 0.0,
-        "severity_within_1": round(within1 / scored, 4) if scored else 0.0,
-        "severity_under_rated": round(under / scored, 4) if scored else 0.0,
-        "severity_over_rated": round(over / scored, 4) if scored else 0.0,
+        "n_positives": positives,
+        "recall_flagged": round(flagged / positives, 4) if positives else 0.0,
+        "severity_exact": round(exact / positives, 4) if positives else 0.0,
+        "severity_within_1": round(within1 / positives, 4) if positives else 0.0,
+        "severity_under_rated": round(under / positives, 4) if positives else 0.0,
+        "severity_over_rated": round(over / positives, 4) if positives else 0.0,
     }
 
 
@@ -103,13 +108,38 @@ async def _run(dataset: str, n: int, chunk: int, seed: int) -> Dict[str, Any]:
     report = _build_report(dataset, eval_clauses, predictions, labels)
     report["ordinal_metrics"] = _ordinal_metrics(predictions, labels)
     report["chunk_size"] = chunk
+
+    # Bootstrap 95% CIs on the headline metrics (plan A4) — error bars for a
+    # subjective grading task at modest N.
+    from evals.metrics import severity as sev_m
+    from evals.metrics.bootstrap import bootstrap_ci
+
+    def _recall_positives(preds: List[Dict[str, Any]], labs: List[Dict[str, Any]]) -> float:
+        pos = flagged = 0
+        for p, l in zip(preds, labs):
+            g = l.get("expected_severity")
+            if g in _TIER and g != "none":
+                pos += 1
+                if (p.get("severity") or "none") != "none":
+                    flagged += 1
+        return flagged / pos if pos else 0.0
+
+    report["confidence_intervals"] = {
+        "severity_qwk": bootstrap_ci(sev_m.quadratic_weighted_kappa, predictions, labels),
+        "severity_mae": bootstrap_ci(sev_m.severity_mae, predictions, labels),
+        "recall_flagged": bootstrap_ci(_recall_positives, predictions, labels),
+        "category_recall": bootstrap_ci(
+            lambda p, l: sev_m.category_recall(p, l)["overall_recall"], predictions, labels),
+        "false_positive_rate": bootstrap_ci(
+            lambda p, l: sev_m.false_positive_rate(p, l)["false_positive_rate"], predictions, labels),
+    }
     return report
 
 
 def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dataset", default="unfair_tos",
-                    choices=("unfair_tos", "opp115", "all"))
+                    choices=("unfair_tos", "unfair_tos_mixed", "opp115", "all"))
     ap.add_argument("--n", type=int, default=120)
     ap.add_argument("--chunk", type=int, default=30)
     ap.add_argument("--seed", type=int, default=42)
@@ -128,15 +158,32 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     om = report["ordinal_metrics"]
     pr = report["precision_recall_by_severity"]
-    print(f"\n=== UNFAIR-ToS benchmark (N={report['n_samples']}) ===")
-    print(f"  recall (flagged):       {om['recall_flagged'] * 100:.1f}%")
-    print(f"  severity exact:         {om['severity_exact'] * 100:.1f}%")
-    print(f"  severity within 1 tier: {om['severity_within_1'] * 100:.1f}%")
-    print(f"  under-rated / over-rated: {om['severity_under_rated']*100:.1f}% / {om['severity_over_rated']*100:.1f}%")
-    print(f"  severity kappa:         {report['severity_kappa']:+.3f} ({report['severity_kappa_interpretation']})")
-    print(f"  category kappa:         {report['category_kappa']:+.3f}")
-    print(f"  category recall:        {report['category_recall'].get('overall_recall', 0)*100:.1f}%")
-    print(f"  micro F1:               {pr.get('micro', {}).get('f1', 0):.3f}")
+    fp = report.get("false_positive_rate", {})
+    ci = report.get("confidence_intervals", {})
+
+    def _band(key: str, pct: bool = True) -> str:
+        c = ci.get(key)
+        if not c:
+            return ""
+        scale = 100 if pct else 1
+        unit = "%" if pct else ""
+        return f"  [95% CI {c['lo']*scale:.1f}–{c['hi']*scale:.1f}{unit}]"
+
+    print(f"\n=== UNFAIR-ToS benchmark (N={report['n_samples']}, positives={om['n_positives']}) ===")
+    print(f"  recall (flagged):       {om['recall_flagged']*100:.1f}%{_band('recall_flagged')}")
+    print(f"  category recall:        {report['category_recall'].get('overall_recall', 0)*100:.1f}%{_band('category_recall')}")
+    print(f"  category kappa:         {report['category_kappa']:+.3f}  (substantive LexGLUE signal)")
+    if fp.get("n_negatives"):
+        print(f"  false-positive rate:    {fp['false_positive_rate']*100:.1f}% ({fp['false_positives']}/{fp['n_negatives']} fair){_band('false_positive_rate')}")
+    else:
+        print("  false-positive rate:    n/a (positives-only — use --dataset unfair_tos_mixed)")
+    print("  -- severity (ordinal; primary) --")
+    print(f"  severity QWK:           {report['severity_qwk']:+.3f}  (quadratic-weighted){_band('severity_qwk', pct=False)}")
+    print(f"  severity MAE:           {report['severity_mae']:.2f} tiers{_band('severity_mae', pct=False)}")
+    print(f"  severity within 1 tier: {om['severity_within_1']*100:.1f}%")
+    print(f"  under / over-rated:     {om['severity_under_rated']*100:.1f}% / {om['severity_over_rated']*100:.1f}%")
+    print(f"  severity kappa:         {report['severity_kappa']:+.3f} (unweighted, base-rate sensitive — NOT the headline)")
+    print(f"  micro F1 (severity):    {pr.get('micro', {}).get('f1', 0):.3f}")
     print(f"  wrote {args.out}")
     return 0
 

@@ -35,9 +35,10 @@ _BACKEND_DIR = _THIS_DIR.parent.parent  # backend/
 
 SEED_PATH = _BACKEND_DIR / "evals" / "fixtures" / "labeled_clauses.json"
 UNFAIR_TOS_PATH = _THIS_DIR / "unfair_tos.jsonl"
+UNFAIR_TOS_MIXED_PATH = _THIS_DIR / "unfair_tos_mixed.jsonl"
 OPP115_PATH = _THIS_DIR / "opp115.jsonl"
 
-_VALID_NAMES = ("unfair_tos", "opp115", "seed", "all")
+_VALID_NAMES = ("unfair_tos", "unfair_tos_mixed", "opp115", "seed", "all")
 
 
 def _iter_jsonl(path: Path):
@@ -119,6 +120,8 @@ def load_dataset(
         rows = _load_seed()
     elif name == "unfair_tos":
         rows = _load_jsonl(UNFAIR_TOS_PATH, source_label="unfair_tos")
+    elif name == "unfair_tos_mixed":
+        rows = _load_jsonl(UNFAIR_TOS_MIXED_PATH, source_label="unfair_tos_mixed")
     elif name == "opp115":
         rows = _load_jsonl(OPP115_PATH, source_label="opp115")
     else:  # "all"

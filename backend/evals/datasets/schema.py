@@ -16,8 +16,11 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 # The 4-level severity rubric used by `LLMClauseDetector` and the metrics
-# code in `evals/metrics.py`. Keep in sync with both.
-SEVERITY_VALUES = ("critical", "high", "medium", "low")
+# code in `evals/metrics.py`, plus "none" for FAIR clauses (a clause that
+# should correctly NOT be flagged — used by mixed fair/unfair benchmark sets
+# to measure the false-positive rate). The detector never emits "none"; it is
+# a gold-label value only. Likewise "none" risk_category marks a fair clause.
+SEVERITY_VALUES = ("critical", "high", "medium", "low", "none")
 
 # The 11 risk categories used by the production detector (see
 # `app/core/llm_clause_detector.py` and `app/core/constants.py`). Keep
@@ -35,10 +38,11 @@ RISK_CATEGORY_VALUES = (
     "rights",
     "surveillance",
     "other",
+    "none",  # fair clause — no risk category
 )
 
 
-SeverityLiteral = Literal["critical", "high", "medium", "low"]
+SeverityLiteral = Literal["critical", "high", "medium", "low", "none"]
 
 
 class EvalClause(BaseModel):

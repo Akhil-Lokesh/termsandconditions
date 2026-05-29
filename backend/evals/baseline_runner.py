@@ -117,6 +117,10 @@ def _build_report(
     return {
         "dataset": dataset_name,
         "n_samples": len(eval_clauses),
+        # Primary severity figure: quadratic-weighted kappa (ordinal, robust to
+        # the base-rate paradox). Unweighted kappa kept as a secondary signal.
+        "severity_qwk": severity_metrics.quadratic_weighted_kappa(predictions, labels),
+        "severity_mae": severity_metrics.severity_mae(predictions, labels),
         "severity_kappa": confusion["overall_kappa"],
         "severity_kappa_interpretation": confusion[
             "overall_kappa_interpretation"
@@ -124,9 +128,11 @@ def _build_report(
         "per_severity_kappa": confusion["per_severity_kappa"],
         "macro_kappa": confusion["macro_kappa"],
         "category_kappa": cat_kappa,
+        "false_positive_rate": severity_metrics.false_positive_rate(predictions, labels),
         "confusion_matrix": confusion["confusion_matrix"],
         "precision_recall_by_severity": pr,
         "category_recall": cat_recall,
+        "selected_clause_ids": [str(c.clause_id) for c in eval_clauses],
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "git_commit": _git_commit_short(),
     }

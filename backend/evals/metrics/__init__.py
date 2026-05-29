@@ -19,16 +19,24 @@ from __future__ import annotations
 # package split keep working unchanged.
 from .severity import (  # noqa: F401  (intentional re-export)
     SEVERITIES,
+    SEVERITY_TIER,
     category_recall,
     confusion_matrix,
+    false_positive_rate,
     precision_recall_by_severity,
+    quadratic_weighted_kappa,
     severity_jaccard,
+    severity_mae,
 )
 
 __all__ = [
     "SEVERITIES",
+    "SEVERITY_TIER",
     "category_recall",
     "confusion_matrix",
+    "false_positive_rate",
     "precision_recall_by_severity",
+    "quadratic_weighted_kappa",
     "severity_jaccard",
+    "severity_mae",
 ]
