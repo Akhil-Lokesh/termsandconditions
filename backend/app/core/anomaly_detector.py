@@ -209,12 +209,32 @@ def _flatten_sections(sections: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 def _dedupe_findings(findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Collapse findings that represent the SAME risk into one.
 
-    A pattern matched in several clauses produces several near-identical findings.
-    Catalog findings are keyed by pattern_id (stable identity even when the LLM
-    phrases the title differently); "novel"/off-catalog findings are keyed by a
-    normalised title (so distinct novel risks are preserved). The highest-severity
-    instance survives; insertion order is preserved.
+    Two passes, each keeping the highest-severity instance and preserving order:
+
+    1. **Same risk identity.** A pattern matched in several clauses produces
+       near-identical findings. Catalog findings are keyed by pattern_id (stable
+       even when the LLM rephrases the title); "novel"/off-catalog findings by a
+       normalised title (so distinct novel risks are preserved).
+
+    2. **Same clause location.** Several DISTINCT catalog patterns can match the
+       same clause (e.g. on the Apple ToS, ``termination_with_prepaid_forfeit``
+       and ``sole_discretion_account_termination`` both fire on the one
+       termination clause; ``perpetual_content_license`` and
+       ``sole_discretion_content_removal`` both fire on the submissions clause).
+       The benchmark counts one risk per clause, so these surface as duplicate
+       alerts ("M x3", "M+L") that pass 1 cannot catch (different pattern_ids).
+       Collapse findings sharing a real clause_number to the strongest one.
+       Findings with no clause_number (e.g. missing-protection findings) are
+       NEVER merged here — they are not tied to a document location.
     """
+
+    def _stronger(a: Dict[str, Any], b: Dict[str, Any]) -> bool:
+        """True if `a` should replace `b` (higher severity)."""
+        return _SEVERITY_RANK.get(a.get("severity", "low"), 0) > _SEVERITY_RANK.get(
+            b.get("severity", "low"), 0
+        )
+
+    # ---- Pass 1: collapse identical risks (pattern_id / title / explanation) --
     best: Dict[str, Dict[str, Any]] = {}
     order: List[str] = []
     for f in findings:
@@ -233,11 +253,30 @@ def _dedupe_findings(findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         if cur is None:
             best[key] = f
             order.append(key)
-        elif _SEVERITY_RANK.get(f.get("severity", "low"), 0) > _SEVERITY_RANK.get(
-            cur.get("severity", "low"), 0
-        ):
+        elif _stronger(f, cur):
             best[key] = f
-    return [best[k] for k in order]
+    collapsed = [best[k] for k in order]
+
+    # ---- Pass 2: collapse multiple patterns hitting the SAME clause location --
+    by_clause: Dict[str, Dict[str, Any]] = {}
+    clause_order: List[str] = []
+    result: List[Dict[str, Any]] = []
+    for f in collapsed:
+        clause = str(f.get("clause_number") or "").strip()
+        if not clause:
+            # No document location (e.g. missing-protection finding) — keep as-is.
+            result.append(f)
+            continue
+        cur = by_clause.get(clause)
+        if cur is None:
+            by_clause[clause] = f
+            clause_order.append(clause)
+            result.append(f)
+        elif _stronger(f, cur):
+            # Replace the weaker finding already emitted for this clause.
+            result[result.index(cur)] = f
+            by_clause[clause] = f
+    return result
 
 
 def _calculate_risk_score(
