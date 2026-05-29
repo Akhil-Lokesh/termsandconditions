@@ -130,9 +130,16 @@ RISK_PATTERNS: List[RiskPattern] = [
     {
         "id": "no_behavioral_advertising_optout",
         "title": "No opt-out from behavioral advertising",
-        "severity": "high",
+        # MEDIUM, not HIGH: using first-party activity data to target ads is the
+        # disclosed, industry-standard funding model for free consumer platforms,
+        # and the user is told about it before agreeing. This is NOT selling
+        # personal data (that stays CRITICAL under
+        # sale_of_personal_data_without_consent). Only escalate above MEDIUM if
+        # the doc combines ad targeting with data SALE, sensitive-category data
+        # (health, precise location, biometrics), or tracking of children.
+        "severity": "medium",
         "category": "privacy",
-        "description": "User cannot opt out of cross-context behavioral advertising / targeted ads based on their activity.",
+        "description": "Targeted/behavioral advertising based on the user's own activity, with limited or no opt-out. Disclosed first-party ad targeting on a free service is MEDIUM; it is distinct from selling personal data to third parties.",
         "example": "We use your activity across our services to show you personalized ads.",
     },
     {

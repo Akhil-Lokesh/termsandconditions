@@ -837,7 +837,10 @@ class LLMClauseDetector:
             List of finding dicts. Empty list if API errors or no absent
             protections (cleanly skip-safe).
         """
-        from app.core.expected_protections import EXPECTED_PROTECTIONS
+        from app.core.expected_protections import (
+            EXPECTED_PROTECTIONS,
+            protection_is_present,
+        )
 
         if not document_text or not document_text.strip():
             return []
@@ -933,6 +936,19 @@ class LLMClauseDetector:
                 if status == "absent" and not str(chk.get("rationale", "")).strip():
                     na_count += 1
                     continue
+
+            # Deterministic presence guard: suppress a false "missing" finding
+            # when the document plainly grants the protection (the inversion
+            # bug — e.g. flagging advance-notice-for-changes as missing on a doc
+            # that says "we will notify you 30 days before changes"). Checks the
+            # FULL document_text, not the truncated copy the LLM saw.
+            if protection_is_present(protection, document_text):
+                na_count += 1
+                logger.info(
+                    f"missing-protections: '{pid}' suppressed — protection is "
+                    f"present in document (presence guard)"
+                )
+                continue
 
             severity = severity_map.get(
                 protection.get("severity_if_missing", "medium_if_missing"),

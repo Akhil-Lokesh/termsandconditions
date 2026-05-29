@@ -40,6 +40,12 @@ class ExpectedProtection(TypedDict, total=False):
     # Plain-English statement of what makes this protection RELEVANT.
     # Used by the LLM to gate the absence check.
     relevance_test: str
+    # Deterministic presence guard. A list of term-GROUPS; the protection is
+    # treated as PRESENT (so a false "absent" verdict is suppressed) if ANY
+    # group has ALL of its terms appearing in the document (case-insensitive
+    # substring). Catches the "inversion" bug where the LLM flags a protection
+    # missing even though the document clearly grants it.
+    presence_indicators: List[List[str]]
 
 
 EXPECTED_PROTECTIONS: List[ExpectedProtection] = [
@@ -135,6 +141,21 @@ EXPECTED_PROTECTIONS: List[ExpectedProtection] = [
         "keywords": ["advance notice", "30 days notice", "we will notify you"],
         "requires_context": True,
         "relevance_test": "Only relevant if the document reserves a right to modify the terms (e.g. 'we may update these terms'). A fixed agreement with no unilateral modification clause should mark 'not_applicable'.",
+        # Deterministic presence guard (see _protection_is_present): the LLM
+        # sometimes marks this absent even when the doc clearly grants advance
+        # notice (e.g. Meta §4.1: "we will notify you ... at least 30 days
+        # before we make changes"). If any term-group below matches the doc, the
+        # protection IS present and the missing-flag is suppressed.
+        # Each group = 2 terms that must BOTH appear; "chang"/"modif" are stems
+        # so they match change/changing/changed, modify/modifications, etc.
+        "presence_indicators": [
+            ["days before", "chang"],
+            ["days before", "modif"],
+            ["advance notice", "chang"],
+            ["advance notice", "modif"],
+            ["prior notice", "chang"],
+            ["prior notice", "modif"],
+        ],
     },
     {
         "id": "termination_appeals_process",
@@ -193,3 +214,26 @@ def get_protections_summary() -> dict:
     """Counts by severity_if_missing — useful for stats."""
     from collections import Counter
     return dict(Counter(p["severity_if_missing"] for p in EXPECTED_PROTECTIONS))
+
+
+def protection_is_present(protection: ExpectedProtection, document_text: str) -> bool:
+    """Deterministic guard against false "missing protection" findings.
+
+    The missing-protections LLM pass occasionally marks a protection ABSENT even
+    when the document plainly grants it — the same inversion bug that retired
+    ``moral_rights_preserved``. Rather than trust the LLM's absence verdict
+    blindly, we re-check the document for unambiguous presence signals.
+
+    Returns True when ANY ``presence_indicators`` term-group has ALL of its
+    terms present (case-insensitive substring) in ``document_text``. Protections
+    without ``presence_indicators`` always return False (no guard, existing
+    behaviour preserved).
+    """
+    indicators = protection.get("presence_indicators")
+    if not indicators:
+        return False
+    text = (document_text or "").lower()
+    return any(
+        all(term.lower() in text for term in group)
+        for group in indicators
+    )
