@@ -41,7 +41,7 @@ DEFAULT_OUT = "evals/COMPARATIVE_REPORT.md"
 # value. Reviewers should be able to grep for this string to find gaps.
 MISSING = "[no data — run gemini-agreement first]"
 
-SEVERITIES_ORDER = ("critical", "high", "medium", "low", "__none__")
+SEVERITIES_ORDER = ("critical", "high", "medium", "low", "none", "__none__")
 
 
 def _fmt_pct(rate: Optional[float]) -> str:
@@ -236,18 +236,28 @@ def _render_disagreements(report: Optional[Dict[str, Any]], log_path: Path) -> s
 def _render_methodology() -> str:
     return (
         "## Methodology\n\n"
-        "Both raters label the same sampled clauses with one severity tier "
-        "(critical / high / medium / low) and one risk_category (11-value "
-        "vocabulary defined in `evals/datasets/schema.py`). Claude predictions "
-        "come from the production `LLMClauseDetector` (the same code path users "
-        "hit in the app). Gemini labels come from `evals/judge/gemini_judge.py`, "
-        "a REST-based wrapper that issues `generateContent` calls at "
-        "temperature 0 with no search-grounding tools attached.\n\n"
+        "Both raters perform the SAME task the production detector performs: "
+        "flag clauses that warrant a consumer-risk alert and decline the rest. "
+        "Each rater assigns one severity tier — one of "
+        "`none / low / medium / high / critical` — plus one risk_category "
+        "(11-value vocabulary defined in `evals/datasets/schema.py`). A `none` "
+        "verdict means the clause is benign/descriptive and warrants no alert; "
+        "for a `none` verdict the risk_category is not scored (there is no risk "
+        "to categorise). This task alignment matters: the production "
+        "`LLMClauseDetector` is a precision-first checklist matcher that returns "
+        "NO finding for non-risky clauses, so a judge forced to assign a tier to "
+        "every clause would manufacture disagreement on clauses both raters "
+        "actually consider harmless. Claude predictions come from the production "
+        "detector (the same code path users hit in the app); a non-flagged "
+        "clause is recorded as `none`. Gemini labels come from "
+        "`evals/judge/gemini_judge.py`, a REST-based wrapper that issues "
+        "`generateContent` calls at temperature 0 with no search-grounding "
+        "tools attached.\n\n"
         "Agreement is computed as the fraction of clauses where both raters "
         "produce the same label (exact match). Cohen's kappa is computed by "
-        "`evals/metrics/kappa.py`. None-valued predictions (the production "
-        "detector chose not to flag a clause) are kept as a fifth bucket "
-        "(`__none__`) in the confusion matrix so coverage gaps are visible.\n"
+        "`evals/metrics/kappa.py` over the union of observed labels (including "
+        "`none`), so agreement on declining to flag a benign clause counts as "
+        "agreement, exactly as it does in production.\n"
     )
 
 
