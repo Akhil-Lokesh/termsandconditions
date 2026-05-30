@@ -122,7 +122,8 @@ the prioritized [`BENCHMARK_IMPROVEMENT_PLAN.md`](backend/evals/BENCHMARK_IMPROV
 ## Tech stack
 
 **Backend** — FastAPI · SQLAlchemy 2.0 · Pydantic v2 · PostgreSQL (Supabase) ·
-Anthropic Claude API · pytest
+Anthropic Claude API · Pinecone + embeddings (powers a separate document Q&A
+feature, not detection) · pytest
 
 **Frontend** — React + Vite · TanStack Query · React Hook Form · Radix UI ·
 Tailwind CSS
@@ -175,7 +176,7 @@ backend/
   app/
     api/v1/          # FastAPI routes (upload, anomalies, auth) — 17 endpoints
     core/            # detection + document pipeline (see below)
-    services/        # Claude, cache, (legacy embeddings/vector)
+    services/        # Claude, cache, embeddings + Pinecone (Q&A retrieval)
   evals/             # evaluation harness, gold holdout, benchmarks, reports
   tests/             # unit + integration tests
 frontend/src/        # React app (upload, results, comparison dashboard)
@@ -205,3 +206,7 @@ Decisions that are easy to miss from the code alone:
 - **The benchmarks don't test chunking.** They feed isolated single clauses, so
   the clause-segmentation lever is measured only end-to-end (document level) — a
   known gap tracked in the improvement plan.
+- **Detection is pure-LLM; embeddings/Pinecone serve a different feature.** The
+  vector store powers a semantic Q&A tab (ask questions about an uploaded
+  document), *not* anomaly detection. It looks unused from the detection code but
+  isn't — verified before any cleanup, and kept deliberately.
