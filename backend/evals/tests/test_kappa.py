@@ -132,14 +132,14 @@ def test_kappa_per_severity_shape():
     ]
     out = kappa_mod.kappa_per_severity(preds, labels)
     assert set(out.keys()) == {"critical", "high", "medium", "low"}
-    # Critical, high, low rows agree perfectly → kappa = 1 for those classes
-    # (the binary one-vs-rest can hit edge case when one side has zero "yes";
-    # kappa is well-defined here so all three are 1.0).
+    # Critical, high, low rows agree perfectly and each has support in both
+    # raters → kappa = 1.0 for those classes.
     assert out["critical"] == pytest.approx(1.0)
     assert out["high"] == pytest.approx(1.0)
     assert out["low"] == pytest.approx(1.0)
-    # No medium examples → degenerate one-vs-rest → kappa = 0.0
-    assert out["medium"] == pytest.approx(0.0) or out["medium"] == pytest.approx(1.0)
+    # No medium examples in EITHER rater → kappa is UNDEFINED (None), not a
+    # fake 1.0 that would later read as a regression once medium appears.
+    assert out["medium"] is None
 
 
 def test_macro_kappa_is_mean():

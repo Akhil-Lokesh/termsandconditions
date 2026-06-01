@@ -219,7 +219,14 @@ async def query_document(
 
             citations.append(
                 Citation(
-                    clause_id=metadata.get("clause_id", f"clause_{idx + 1}"),
+                    # Chunk metadata stores the real clause number under
+                    # "clause_number" (see legal_chunker); there is no "clause_id"
+                    # key, so the old lookup always fell back to a synthetic index.
+                    clause_id=(
+                        metadata.get("clause_number")
+                        or metadata.get("clause_id")
+                        or f"clause_{idx + 1}"
+                    ),
                     section=metadata.get("section", "Unknown Section"),
                     text=(
                         metadata["text"][:300] + "..."

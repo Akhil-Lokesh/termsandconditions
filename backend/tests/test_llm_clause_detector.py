@@ -259,14 +259,16 @@ class TestDetectRiskyClauses:
         mock_claude.create_structured_completion.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_claude_failure_graceful(self, detector, mock_claude):
-        """Claude API failure returns empty list (graceful degradation)."""
+    async def test_total_claude_failure_raises(self, detector, mock_claude):
+        """A TOTAL LLM failure must RAISE, not silently return []. Returning an
+        empty list let the caller mark the document 'completed' with 0 anomalies —
+        a false 'no risks found' on a risk-analysis tool. The caller catches the
+        raise and marks the document failed instead."""
         mock_claude.create_structured_completion.side_effect = Exception("API timeout")
 
         clauses = [{"text": "Some clause.", "section": "A", "clause_number": "1"}]
-        result = await detector.detect_risky_clauses(clauses, "TestCo")
-
-        assert result == []
+        with pytest.raises(Exception):
+            await detector.detect_risky_clauses(clauses, "TestCo")
 
 
 # ── _format_clauses tests ────────────────────────────────────────────────────

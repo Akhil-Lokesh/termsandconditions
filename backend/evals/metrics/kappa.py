@@ -165,7 +165,7 @@ def _extract_severities(
 def kappa_per_severity(
     predictions: List[Dict],
     labels: List[Dict],
-) -> Dict[str, float]:
+) -> Dict[str, Optional[float]]:
     """One-vs-rest Cohen's kappa for each severity class.
 
     For each severity ``s`` in ``{critical, high, medium, low}`` we build
@@ -174,23 +174,32 @@ def kappa_per_severity(
     to break down a multi-class kappa per class.
 
     Returns:
-        ``{ "critical": float, "high": float, "medium": float, "low": float }``.
-        Missing classes (zero support in both raters) get kappa = 0.0.
+        ``{ "critical": float|None, ... }``. A class with ZERO support in BOTH
+        raters maps to ``None`` (UNDEFINED) — every rating is "no", so the
+        one-vs-rest problem is degenerate. The old code returned 1.0 here, which
+        made a class that later gains instances look like a CI-gate regression
+        (1.0 → real kappa). ``None`` is excluded from ``macro_kappa`` and skipped
+        by the CI gate.
     """
     pred_sev, gold_sev = _extract_severities(predictions, labels)
-    out: Dict[str, float] = {}
+    out: Dict[str, Optional[float]] = {}
     for s in SEVERITIES:
         r1 = ["yes" if x == s else "no" for x in pred_sev]
         r2 = ["yes" if x == s else "no" for x in gold_sev]
+        # Zero support in BOTH raters → kappa undefined (not 1.0).
+        if "yes" not in r1 and "yes" not in r2:
+            out[s] = None
+            continue
         out[s] = cohens_kappa(r1, r2, categories=("yes", "no"))
     return out
 
 
-def macro_kappa(per_severity: Dict[str, float]) -> float:
-    """Mean of per-severity kappas. Returns 0.0 if the dict is empty."""
-    if not per_severity:
+def macro_kappa(per_severity: Dict[str, Optional[float]]) -> float:
+    """Mean of the DEFINED per-severity kappas. Undefined (None) classes are
+    excluded. Returns 0.0 if there are no defined values."""
+    vals = [v for v in per_severity.values() if v is not None]
+    if not vals:
         return 0.0
-    vals = [v for v in per_severity.values()]
     return sum(vals) / len(vals)
 
 

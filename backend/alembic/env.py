@@ -8,8 +8,11 @@ from alembic import context
 
 from app.core.config import settings
 from app.db.base import Base
-# Import all models so Alembic can detect them
-from app.models import user, document, clause, anomaly, feedback_event  # noqa: F401
+# Import the models PACKAGE so EVERY model registers on Base.metadata. Importing
+# a hand-maintained subset of submodules (the old approach) silently dropped any
+# model not in the list from the autogenerate target — so `alembic revision
+# --autogenerate` would emit DROP TABLE for the omitted tables.
+import app.models  # noqa: F401
 
 # Alembic Config object
 config = context.config

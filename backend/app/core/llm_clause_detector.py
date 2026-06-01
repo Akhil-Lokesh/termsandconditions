@@ -449,50 +449,65 @@ class LLMClauseDetector:
 
         all_findings: List[Dict[str, Any]] = []
 
+        # Split into batches if needed
+        batches = self._split_into_batches(clauses)
+        batch_total = len(batches)
+        batch_success = 0
+        logger.info(f"Split into {batch_total} batch(es)")
+
+        if batch_total == 1:
+            try:
+                findings = await self._analyze_batch_with_retry(
+                    batches[0], company_name, service_type, document_type
+                )
+                all_findings.extend(findings)
+                batch_success += 1
+            except Exception as e:
+                logger.error(
+                    f"Single batch analysis failed after retry: {e}",
+                    exc_info=True,
+                )
+        else:
+            # Run batches in parallel; each batch retries once on failure.
+            tasks = [
+                self._analyze_batch_with_retry(
+                    batch, company_name, service_type, document_type
+                )
+                for batch in batches
+            ]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for result in results:
+                if isinstance(result, Exception):
+                    logger.error(f"Batch analysis failed after retry: {result}")
+                else:
+                    all_findings.extend(result)
+                    batch_success += 1
+
+        # A TOTAL outage (every batch errored) must NOT be reported as an empty
+        # finding list — that silently marks the document "completed" with 0
+        # anomalies, i.e. a false "no risks found" on a risk-analysis tool. Raise
+        # so the caller marks the document failed instead. Partial success
+        # (some batches OK) is kept — degraded coverage beats no result.
+        if batch_total > 0 and batch_success == 0:
+            raise RuntimeError(
+                f"LLM clause detection failed for all {batch_total} batch(es) "
+                f"({company_name}); refusing to report a false 'no risks' result."
+            )
+
+        logger.info(
+            f"LLM detection found {len(all_findings)} risky clauses "
+            f"({batch_success}/{batch_total} batches succeeded)"
+        )
+
+        # ── Self-consistency vote on critical LLM findings ───────────────
+        # Best-effort: a vote-pass failure must never discard findings we already
+        # have, so it is caught here rather than nuking all_findings.
         try:
-            # Split into batches if needed
-            batches = self._split_into_batches(clauses)
-            logger.info(f"Split into {len(batches)} batch(es)")
-
-            if len(batches) == 1:
-                try:
-                    findings = await self._analyze_batch_with_retry(
-                        batches[0], company_name, service_type, document_type
-                    )
-                    all_findings.extend(findings)
-                except Exception as e:
-                    logger.error(
-                        f"Single batch analysis failed after retry: {e}",
-                        exc_info=True,
-                    )
-            else:
-                # Run batches in parallel; each batch retries once on failure.
-                tasks = [
-                    self._analyze_batch_with_retry(
-                        batch, company_name, service_type, document_type
-                    )
-                    for batch in batches
-                ]
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                for result in results:
-                    if isinstance(result, Exception):
-                        logger.error(f"Batch analysis failed after retry: {result}")
-                    else:
-                        all_findings.extend(result)
-
-            logger.info(f"LLM detection found {len(all_findings)} risky clauses")
-
-            # ── Self-consistency vote on critical LLM findings ───────────────
-            # Feature-flagged; default OFF. Only re-evaluates `severity=='critical'`
-            # findings that came from the LLM batch (`detection_source=='llm'`).
             all_findings = await self._apply_self_consistency(
                 all_findings, document_type=document_type
             )
-
         except Exception as e:
-            logger.error(f"LLM clause detection failed entirely: {e}", exc_info=True)
-            # Graceful fallback — keyword detection still runs at higher level.
-            all_findings = []
+            logger.warning(f"self-consistency pass failed (non-fatal): {e}")
 
         if return_aggregate:
             return {

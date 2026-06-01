@@ -1,31 +1,28 @@
-"""Heuristic auto-promoter for the gold holdout.
+"""Candidate suggester for manual gold-holdout adjudication — READ-ONLY.
 
 Scans ``gold_holdout.jsonl`` for medium/high rows whose text matches
 critical-tier patterns (forced arbitration + class waiver, jury-trial
 waiver, broad liability caps, perpetual licenses, sale of personal data,
-unilateral termination with forfeit) and proposes severity promotions.
+unilateral termination with forfeit) and PRINTS them as candidates for a
+human to review.
 
-Defaults to **dry-run** — prints proposed changes and exits without
-writing. Pass ``--apply`` to actually rewrite the file (atomic).
-
-Conservative by design: precision over recall. Requires at least one
-strong pattern match. Better to under-promote and let you regrade the
-remainder than to over-promote false positives.
+INTEGRITY NOTE: this tool never writes to the holdout. Auto-relabeling the
+sealed gold standard with the detector's own regex heuristics would make the
+"independent" labels circular — the benchmark would just reward the detector
+for matching its own patterns. Gold severities are hand-adjudicated only; use
+this list as a worklist for that manual review, not as an automated rewrite.
 
 Usage:
     cd backend
-    python -m evals.datasets.auto_promote_critical            # dry run
-    python -m evals.datasets.auto_promote_critical --apply    # write
+    python -m evals.datasets.auto_promote_critical            # print candidates
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import sys
-import tempfile
 import textwrap
 from collections import Counter
 from pathlib import Path
@@ -96,20 +93,6 @@ def load_rows() -> list[dict]:
     return [json.loads(l) for l in HOLDOUT_PATH.open() if l.strip()]
 
 
-def atomic_rewrite(rows: list[dict]) -> None:
-    fd, tmp = tempfile.mkstemp(dir=HOLDOUT_PATH.parent,
-                                prefix=".gold_holdout.", suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w") as f:
-            for r in rows:
-                f.write(json.dumps(r) + "\n")
-        os.replace(tmp, HOLDOUT_PATH)
-    except Exception:
-        if os.path.exists(tmp):
-            os.unlink(tmp)
-        raise
-
-
 def match_patterns(text: str) -> list[tuple[str, str]]:
     """Return list of (pattern_name, description) that match the text."""
     hits = []
@@ -134,10 +117,8 @@ def show_dist(rows: list[dict], label: str) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--apply", action="store_true",
-                    help="actually write changes (default: dry run)")
     ap.add_argument("--include-low", action="store_true",
-                    help="also scan low-severity rows for promotion")
+                    help="also scan low-severity rows for candidates")
     args = ap.parse_args()
 
     rows = load_rows()
@@ -175,27 +156,17 @@ def main() -> None:
         )
         print(snippet)
 
-    # Project post-state
+    # Project what the distribution WOULD look like if a human promoted these —
+    # informational only; nothing is written.
     projected = [dict(r) for r in rows]
     for i, _rec, _hits in proposals:
         projected[i]["expected_severity"] = "critical"
-    show_dist(projected, "PROJECTED AFTER")
+    show_dist(projected, "PROJECTED IF MANUALLY PROMOTED")
 
-    if not args.apply:
-        print(f"\n{'=' * 72}")
-        print("DRY RUN — no changes written.")
-        print("Re-run with --apply to commit these promotions.")
-        print(f"{'=' * 72}")
-        return
-
-    # Apply
-    for i, _rec, _hits in proposals:
-        rows[i]["expected_severity"] = "critical"
-    atomic_rewrite(rows)
-    show_dist(rows, "AFTER (written)")
-    print(f"\nwrote {HOLDOUT_PATH}")
-    print("\nnext: review the promoted rows manually with regrade_gold_holdout")
-    print("      and/or run baseline_runner once distribution is acceptable.")
+    print(f"\n{'=' * 72}")
+    print("READ-ONLY — no changes written (gold labels are hand-adjudicated).")
+    print("Use the list above as a worklist for manual review.")
+    print(f"{'=' * 72}")
 
 
 if __name__ == "__main__":

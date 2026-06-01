@@ -83,6 +83,8 @@ EXPECTED_PROTECTIONS: List[ExpectedProtection] = [
         "category": "data",
         "description": "Users should be able to request deletion of their personal data with a clear process and committed timeline.",
         "keywords": ["delete", "deletion", "erase", "right to erasure", "right to be forgotten"],
+        "requires_context": True,
+        "relevance_test": "Only relevant for documents that collect and store personal data (privacy policies, or a ToS with a data-handling section). A pure ToS with no personal-data processing should mark 'not_applicable'.",
     },
     {
         "id": "data_export_right",
@@ -91,6 +93,8 @@ EXPECTED_PROTECTIONS: List[ExpectedProtection] = [
         "category": "data",
         "description": "Users should be able to download a copy of their data in a portable format (GDPR Art. 20).",
         "keywords": ["data portability", "download your data", "export"],
+        "requires_context": True,
+        "relevance_test": "Only relevant for documents that collect and store personal data (privacy policies, or a ToS with a data-handling section). A pure ToS with no personal-data processing should mark 'not_applicable'.",
     },
     {
         "id": "data_access_right",
@@ -99,6 +103,8 @@ EXPECTED_PROTECTIONS: List[ExpectedProtection] = [
         "category": "data",
         "description": "Users should be able to request a copy of personal data held about them (GDPR Art. 15, CCPA right to know).",
         "keywords": ["access your data", "data subject access", "DSAR"],
+        "requires_context": True,
+        "relevance_test": "Only relevant for documents that collect and store personal data (privacy policies, or a ToS with a data-handling section). A pure ToS with no personal-data processing should mark 'not_applicable'.",
     },
     {
         "id": "advertising_optout",
@@ -216,6 +222,33 @@ def get_protections_summary() -> dict:
     return dict(Counter(p["severity_if_missing"] for p in EXPECTED_PROTECTIONS))
 
 
+# Max character span within which a presence-indicator group's terms must all
+# appear. ~160 chars ≈ a sentence or two — tight enough that the terms describe
+# the SAME provision, not coincidental mentions scattered across the document.
+_PRESENCE_PROXIMITY_WINDOW = 160
+
+
+def _terms_colocated(text: str, group: List[str], window: int = _PRESENCE_PROXIMITY_WINDOW) -> bool:
+    """True if every term in ``group`` appears within a ``window``-char span.
+
+    Anchors on the first (most specific) term and checks the remaining terms fall
+    within ``window`` characters of one of its occurrences. This is the proximity
+    bound that a plain whole-document substring check lacks.
+    """
+    if not group:
+        return False
+    anchor, others = group[0], group[1:]
+    start = 0
+    while True:
+        idx = text.find(anchor, start)
+        if idx == -1:
+            return False
+        span = text[max(0, idx - window): idx + len(anchor) + window]
+        if all(other in span for other in others):
+            return True
+        start = idx + 1
+
+
 def protection_is_present(protection: ExpectedProtection, document_text: str) -> bool:
     """Deterministic guard against false "missing protection" findings.
 
@@ -224,16 +257,18 @@ def protection_is_present(protection: ExpectedProtection, document_text: str) ->
     ``moral_rights_preserved``. Rather than trust the LLM's absence verdict
     blindly, we re-check the document for unambiguous presence signals.
 
-    Returns True when ANY ``presence_indicators`` term-group has ALL of its
-    terms present (case-insensitive substring) in ``document_text``. Protections
-    without ``presence_indicators`` always return False (no guard, existing
-    behaviour preserved).
+    Returns True when ANY ``presence_indicators`` term-group has ALL of its terms
+    appearing CLOSE TOGETHER (within ``_PRESENCE_PROXIMITY_WINDOW`` chars).
+    Without the proximity bound a doc that says "30 days before cancellation"
+    in one place and "we may change these terms" in another would falsely
+    suppress the advance-notice protection. Protections without
+    ``presence_indicators`` always return False (no guard).
     """
     indicators = protection.get("presence_indicators")
     if not indicators:
         return False
     text = (document_text or "").lower()
     return any(
-        all(term.lower() in text for term in group)
+        _terms_colocated(text, [term.lower() for term in group])
         for group in indicators
     )

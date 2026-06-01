@@ -74,12 +74,28 @@ async def _detect(
     )
 
 
+_ALIGN_SEVERITY_RANK = {"critical": 3, "high": 2, "medium": 1, "low": 0}
+
+
 def _align_predictions(
     findings: List[Dict[str, Any]],
     eval_clauses: List[Any],
 ) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-    """Build aligned (predictions, labels) lists keyed by clause_id."""
-    by_id = {str(f.get("clause_number")): f for f in findings}
+    """Build aligned (predictions, labels) lists keyed by clause_id.
+
+    When several findings hit the SAME clause, keep the highest-severity one —
+    mirroring production's ``_dedupe_findings`` (which collapses per-clause
+    duplicates to the strongest). A plain ``{clause_number: f}`` comprehension
+    kept the LAST finding instead, so the eval could score a different severity
+    than the detector actually surfaces.
+    """
+    by_id: Dict[str, Dict[str, Any]] = {}
+    for f in findings:
+        key = str(f.get("clause_number"))
+        cur = by_id.get(key)
+        if cur is None or _ALIGN_SEVERITY_RANK.get(str(f.get("severity")), -1) > \
+                _ALIGN_SEVERITY_RANK.get(str(cur.get("severity")), -1):
+            by_id[key] = f
     predictions: List[Dict[str, Any]] = []
     labels: List[Dict[str, Any]] = []
     for c in eval_clauses:

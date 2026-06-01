@@ -191,8 +191,10 @@ async def run_anomaly_detection_background(
             logger.error(f"Document {document_id} not found after {max_retries} retries")
             return
 
-        # Extract company name from metadata
-        company_name = metadata.get("company", "Unknown")
+        # Extract company name from metadata. The metadata extractor emits
+        # "company_name" (with "company" only as an occasional alias), so reading
+        # "company" alone made every detection/report see company="Unknown".
+        company_name = metadata.get("company_name") or metadata.get("company") or "Unknown"
         service_type = _infer_service_type(metadata)
 
         # Build document_context for AnomalyDetector. Forward the
@@ -299,8 +301,13 @@ async def run_anomaly_detection_background(
     except Exception as e:
         logger.error(f"Background anomaly detection failed for {document_id}: {e}", exc_info=True)
 
-        # Update document status to failed
+        # Update document status to failed.
+        # CRITICAL: roll back first. If the failure was a DB error (or happened
+        # after some anomalies were add()ed), the session is in a failed
+        # transaction and the status-update commit below would ALSO fail —
+        # silently leaving the document stuck in "analyzing_anomalies" forever.
         try:
+            db.rollback()
             document = db.query(Document).filter(Document.id == document_id).first()
             if document:
                 document.processing_status = "anomaly_detection_failed"
@@ -310,6 +317,7 @@ async def run_anomaly_detection_background(
                 db.commit()
         except Exception as db_error:
             logger.error(f"Failed to update document status after error: {db_error}")
+            db.rollback()
     
     finally:
         # Always close the session when done
@@ -652,6 +660,8 @@ async def get_document(
         page_count=document.page_count,
         clause_count=document.clause_count,
         anomaly_count=document.anomaly_count,
+        risk_score=document.risk_score,
+        risk_level=document.risk_level,
         processing_status=document.processing_status,
         created_at=document.created_at,
     )
@@ -694,6 +704,8 @@ async def list_documents(
                 page_count=doc.page_count,
                 clause_count=doc.clause_count,
                 anomaly_count=doc.anomaly_count,
+                risk_score=doc.risk_score,
+                risk_level=doc.risk_level,
                 processing_status=doc.processing_status,
                 created_at=doc.created_at,
             )

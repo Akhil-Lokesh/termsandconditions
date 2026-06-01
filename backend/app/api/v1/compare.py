@@ -57,6 +57,18 @@ async def compare_documents(
             detail="At least 2 documents required for comparison",
         )
 
+    # All documents must have finished analysis. Comparing an in-progress doc
+    # produces bogus output (risk_score defaults to 0, anomalies not yet saved).
+    unfinished = [d.id for d in documents if d.processing_status != "completed"]
+    if unfinished:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"All documents must finish analysis before comparison "
+                f"({len(unfinished)} of {len(documents)} still processing)."
+            ),
+        )
+
     try:
         # Get anomalies for each document
         from app.models.anomaly import Anomaly
@@ -69,10 +81,11 @@ async def compare_documents(
                 .all()
             )
 
+            meta = doc.document_metadata or {}  # guard: metadata can be NULL
             comparisons.append({
                 "document_id": doc.id,
                 "filename": doc.filename,
-                "company": doc.document_metadata.get("company", "Unknown"),
+                "company": meta.get("company_name") or meta.get("company") or "Unknown",
                 "risk_score": doc.risk_score or 0.0,
                 "risk_level": doc.risk_level or "Unknown",
                 "anomaly_count": len(anomalies),
