@@ -81,6 +81,20 @@ class APIClient {
     this.client.interceptors.response.use(
       (response) => response,
       (error: AxiosError<APIError>) => {
+        // Extract the backend's `detail` once. FastAPI returns either a string
+        // (HTTPException) or an array of {msg} (422 validation errors).
+        const rawDetail = error.response?.data?.detail;
+        const backendDetail =
+          typeof rawDetail === 'string'
+            ? rawDetail
+            : Array.isArray(rawDetail)
+              ? rawDetail.map((e) => e.msg).join(', ')
+              : undefined;
+
+        const url = error.config?.url ?? '';
+        const isAuthEndpoint =
+          url.includes('/auth/login') || url.includes('/auth/signup');
+
         // User-friendly error messages
         let message = 'An unexpected error occurred';
 
@@ -88,29 +102,30 @@ class APIClient {
           // Server responded with error
           switch (error.response.status) {
             case 400:
-              message = 'Invalid request. Please check your input.';
+            case 409:
+            case 422:
+              // Surface the backend's validation/business message verbatim.
+              message = backendDetail || 'Invalid request. Please check your input.';
               break;
             case 401:
-              message = 'Please log in to continue.';
-              this.clearToken();
-              window.dispatchEvent(new Event('auth:logout'));
+              if (isAuthEndpoint) {
+                // A 401 from login/signup means bad credentials — NOT an expired
+                // session. Show the real reason and do NOT trigger a global logout.
+                message = backendDetail || 'Incorrect email or password.';
+              } else {
+                message = 'Please log in to continue.';
+                this.clearToken();
+                window.dispatchEvent(new Event('auth:logout'));
+              }
               break;
             case 403:
-              message = 'You do not have permission to perform this action.';
+              message = backendDetail || 'You do not have permission to perform this action.';
               break;
             case 404:
-              message = 'The requested resource was not found.';
+              message = backendDetail || 'The requested resource was not found.';
               break;
             case 413:
               message = 'File is too large. Maximum size is 10MB.';
-              break;
-            case 422:
-              const detail422 = error.response.data?.detail;
-              message = typeof detail422 === 'string' 
-                ? detail422 
-                : Array.isArray(detail422) 
-                  ? detail422.map(e => e.msg).join(', ') 
-                  : 'Validation error';
               break;
             case 429:
               message = 'Too many requests. Please try again later.';
@@ -122,12 +137,7 @@ class APIClient {
               message = 'Service temporarily unavailable. Please try again in a few minutes.';
               break;
             default:
-              const detailDefault = error.response.data?.detail;
-              message = typeof detailDefault === 'string' 
-                ? detailDefault 
-                : Array.isArray(detailDefault) 
-                  ? detailDefault.map(e => e.msg).join(', ') 
-                  : message;
+              message = backendDetail || message;
           }
         } else if (error.request) {
           // Request made but no response
@@ -137,9 +147,12 @@ class APIClient {
           message = error.message;
         }
 
-        // Create friendly error object
+        // Friendly error: `message` is always set; `detail` carries the raw backend
+        // detail for callers that want it. NOTE: there is no `.response` field —
+        // consumers must read `.message` (or `.detail`), not `error.response.data.detail`.
         const friendlyError = {
           message,
+          detail: backendDetail,
           status: error.response?.status,
           originalError: error,
         };

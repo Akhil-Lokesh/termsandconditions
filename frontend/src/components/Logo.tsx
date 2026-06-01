@@ -31,29 +31,17 @@ export const LogoMark = ({ className = 'h-5 w-5' }: LogoMarkProps) => (
 );
 
 interface LogoProps {
-  /** When true, render the wordmark + tagline next to the mark. */
+  /** Accepted for API compatibility; the wordmark is always rendered. */
   showWordmark?: boolean;
   className?: string;
 }
 
-/** Full header lockup: gradient tile + glyph (+ optional wordmark). */
-export const Logo = ({ showWordmark = true, className = '' }: LogoProps) => (
-  <span className={`flex items-center gap-2.5 group ${className}`}>
-    <span className="relative">
-      <span className="absolute inset-0 bg-primary/25 blur-lg rounded-lg group-hover:bg-primary/40 transition-colors" />
-      <span className="relative grid place-items-center bg-gradient-to-br from-primary to-accent text-primary-foreground rounded-lg h-8 w-8 lg:h-9 lg:w-9 ring-1 ring-primary/30">
-        <LogoMark className="h-[18px] w-[18px] lg:h-5 lg:w-5" />
-      </span>
-    </span>
-    {showWordmark && (
-      <span className="flex flex-col leading-none">
-        <span className="font-display font-bold text-base lg:text-lg tracking-tight text-foreground">
-          T&amp;C Analyzer
-        </span>
-        <span className="text-[9px] lg:text-[10px] font-mono uppercase tracking-[0.18em] text-muted-foreground mt-0.5">
-          Contract Risk Intelligence
-        </span>
-      </span>
-    )}
+/** Text-only wordmark. "T&C" carries the brand accent; no icon. */
+export const Logo = ({ className = '' }: LogoProps) => (
+  <span
+    className={`font-display font-bold text-lg lg:text-xl tracking-tight ${className}`}
+  >
+    <span className="text-primary">T&amp;C</span>{' '}
+    <span className="text-foreground">Analyzer</span>
   </span>
 );

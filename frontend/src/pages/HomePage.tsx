@@ -1,89 +1,136 @@
+import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Logo, LogoMark } from '@/components/Logo';
-import {
-  ScanLine,
-  ShieldCheck,
-  MessagesSquare,
-  ArrowRight,
-  AlertTriangle,
-  Upload,
-  FileSearch,
-  ListChecks,
-} from 'lucide-react';
+import { ArrowRight, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { Reveal } from '@/components/Reveal';
+import { ScrollProgress } from '@/components/ScrollProgress';
+import { RiskCatalog } from '@/components/marketing/RiskCatalog';
+import { EngineDiagram } from '@/components/marketing/EngineDiagram';
+import { EvalReport } from '@/components/marketing/EvalReport';
+import { SampleFindings } from '@/components/marketing/SampleFindings';
+import { Faq } from '@/components/marketing/Faq';
+import { FinalCta } from '@/components/marketing/FinalCta';
+
+const NAV_LINKS = [
+  { href: '#catches', label: 'What it catches' },
+  { href: '#engine', label: 'How it works' },
+  { href: '#evals', label: 'Benchmarks' },
+];
 
 const STATS = [
-  { value: '41', label: 'curated risk patterns' },
-  { value: '4', label: 'severity tiers' },
-  { value: '2-pass', label: 'LLM detection + ranker' },
-  { value: 'public', label: 'benchmark-evaluated' },
-];
-
-const FEATURES = [
-  {
-    icon: ScanLine,
-    title: 'Risky-clause detection',
-    body: 'A checklist of curated risk patterns is matched against every clause — perpetual content licenses, forced arbitration, termination-on-suspicion — each flagged with a severity and a plain-English reason it matters to you.',
-  },
-  {
-    icon: ShieldCheck,
-    title: 'Missing-protection scan',
-    body: 'Just as important as the bad clauses: the protections a fair agreement should have but doesn’t — breach notification, advance notice of changes, an appeal for account termination.',
-  },
-  {
-    icon: MessagesSquare,
-    title: 'Ask the document',
-    body: 'Query any uploaded agreement in plain language and get answers grounded in the actual text, with citations back to the exact clauses.',
-  },
-];
-
-const STEPS = [
-  { icon: Upload, title: 'Upload', body: 'Drop in a Terms of Service or Privacy Policy — PDF or pasted text.' },
-  { icon: FileSearch, title: 'Analyze', body: 'Each clause is matched against the risk catalog and screened for missing protections.' },
-  { icon: ListChecks, title: 'Review', body: 'Findings ranked by severity, in plain English, with the clause and why it’s risky.' },
+  { value: '~41', label: 'curated risk patterns' },
+  { value: '84%', label: 'recall on UNFAIR-ToS' },
+  { value: '+0.42', label: 'cross-model severity κ' },
+  { value: '2-pass', label: 'LLM engine + ranker' },
 ];
 
 export default function HomePage() {
-  return (
-    <div className="relative min-h-screen overflow-hidden">
-      {/* atmosphere */}
-      <div className="grid-pattern pointer-events-none absolute inset-0 opacity-[0.4]" />
-      <div className="pointer-events-none absolute inset-x-0 -top-40 h-[480px] bg-[radial-gradient(ellipse_60%_60%_at_50%_0%,hsl(var(--primary)/0.16),transparent)]" />
+  const rootRef = useRef<HTMLDivElement>(null);
 
-      {/* top bar */}
-      <header className="relative z-10 border-b border-border/40 backdrop-blur-sm">
-        <div className="container mx-auto flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
-          <Logo />
-          <div className="flex items-center gap-2">
-            <Link to="/login">
-              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
-                Login
-              </Button>
-            </Link>
-            <Link to="/signup">
-              <Button size="sm" className="glow-primary">Get started</Button>
-            </Link>
-          </div>
+  // Subtle scroll parallax on the atmosphere layers. Writes a CSS var straight
+  // to the DOM (no React state) so scrolling never re-renders the page tree.
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      root.style.setProperty('--sy', String(window.scrollY));
+    };
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(update);
+    };
+    update();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, []);
+
+  return (
+    <div ref={rootRef} className="relative min-h-screen overflow-hidden">
+      <ScrollProgress />
+
+      {/* atmosphere — drifts on scroll for depth */}
+      <div
+        className="grid-pattern pointer-events-none absolute inset-0 opacity-[0.4] will-change-transform"
+        style={{ transform: 'translate3d(0, calc(var(--sy, 0) * 0.05px), 0)' }}
+      />
+      <div
+        className="pointer-events-none absolute inset-x-0 -top-40 h-[480px] bg-[radial-gradient(ellipse_60%_60%_at_50%_0%,hsl(var(--primary)/0.16),transparent)] will-change-transform"
+        style={{ transform: 'translate3d(0, calc(var(--sy, 0) * 0.18px), 0)' }}
+      />
+
+      {/* top bar — floating glass island */}
+      <div className="sticky top-0 z-50 pt-4 sm:pt-6">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          <header className="group/nav relative mx-auto flex h-14 max-w-5xl items-center justify-between rounded-full border border-white/[0.08] bg-background/50 pl-4 pr-2 backdrop-blur-2xl transition-all duration-500 shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset,0_0_0_1px_rgba(255,255,255,0.02),0_16px_50px_-20px_rgba(0,0,0,0.85)] hover:border-white/[0.12] hover:bg-background/60">
+            {/* hairline sheen along the top edge */}
+            <span className="pointer-events-none absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent" />
+            {/* soft inner highlight at the bottom edge — glass depth */}
+            <span className="pointer-events-none absolute inset-x-16 bottom-0 h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
+            {/* faint cyan wash that lifts on hover */}
+            <span className="pointer-events-none absolute inset-0 rounded-full bg-[radial-gradient(120%_140%_at_50%_-40%,hsl(var(--primary)/0.07),transparent_60%)] opacity-0 transition-opacity duration-500 group-hover/nav:opacity-100" />
+
+            <Logo />
+
+            {/* center anchor nav (desktop) */}
+            <nav className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-1 md:flex">
+              {NAV_LINKS.map((l) => (
+                <a
+                  key={l.href}
+                  href={l.href}
+                  className="rounded-full px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground transition-colors hover:bg-white/[0.05] hover:text-foreground"
+                >
+                  {l.label}
+                </a>
+              ))}
+            </nav>
+
+            <div className="relative flex items-center gap-1">
+              <Link to="/login">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="rounded-full px-4 text-muted-foreground hover:bg-white/[0.05] hover:text-foreground"
+                >
+                  Login
+                </Button>
+              </Link>
+              <Link to="/signup">
+                <Button
+                  size="sm"
+                  className="rounded-full px-4 shadow-[0_0_0_1px_hsl(var(--primary)/0.3),0_6px_20px_-6px_hsl(var(--primary)/0.5)] transition-shadow hover:shadow-[0_0_0_1px_hsl(var(--primary)/0.5),0_8px_28px_-6px_hsl(var(--primary)/0.7)]"
+                >
+                  Get started
+                </Button>
+              </Link>
+            </div>
+          </header>
         </div>
-      </header>
+      </div>
 
       {/* hero */}
-      <section className="relative z-10 container mx-auto px-4 sm:px-6 lg:px-8 pt-16 lg:pt-24 pb-12">
-        <div className="grid lg:grid-cols-[1.1fr_0.9fr] gap-12 lg:gap-16 items-center">
+      <section className="relative z-10 container mx-auto px-4 sm:px-6 lg:px-8 pb-12 pt-16 lg:pt-24">
+        <div className="grid items-center gap-12 lg:grid-cols-[1.1fr_0.9fr] lg:gap-16">
           {/* copy */}
-          <div className="animate-slide-up">
-            <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-muted/30 px-3 py-1 mb-6">
+          <Reveal variant="left">
+            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-border/60 bg-muted/30 px-3 py-1">
               <span className="status-indicator high" />
               <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
                 Read the fine print before it reads you
               </span>
             </div>
-            <h1 className="font-display font-bold tracking-tight text-4xl sm:text-5xl lg:text-6xl leading-[1.05]">
+            <h1 className="font-display text-4xl font-bold leading-[1.05] tracking-tight sm:text-5xl lg:text-6xl">
               The risky clauses in any{' '}
               <span className="text-primary glow-text">Terms&nbsp;&amp;&nbsp;Conditions</span>,
               surfaced in seconds.
             </h1>
-            <p className="mt-6 text-base lg:text-lg text-muted-foreground max-w-xl leading-relaxed">
+            <p className="mt-6 max-w-xl text-base leading-relaxed text-muted-foreground lg:text-lg">
               T&amp;C Analyzer reads a Terms of Service or Privacy Policy, flags the clauses that
               disadvantage you — with a severity and a plain-English explanation — and tells you which
               consumer protections it&apos;s <span className="text-foreground">missing</span>.
@@ -96,17 +143,21 @@ export default function HomePage() {
                 </Button>
               </Link>
               <Link to="/login">
-                <Button size="lg" variant="outline" className="h-12 px-6 text-sm border-border-bright">
+                <Button size="lg" variant="outline" className="h-12 border-border-bright px-6 text-sm">
                   Login
                 </Button>
               </Link>
             </div>
-          </div>
+            <div className="mt-6 flex items-center gap-2 font-mono text-[11px] text-muted-foreground/70">
+              <ShieldCheck className="h-3.5 w-3.5 text-emerald-500/80" />
+              Informational analysis, not legal advice.
+            </div>
+          </Reveal>
 
           {/* sample finding preview */}
-          <div className="animate-slide-up stagger-2">
-            <div className="card-interactive rounded-xl border border-border/50 border-l-4 border-l-red-500 overflow-hidden shadow-2xl">
-              <div className="flex items-center justify-between border-b border-border/40 px-4 py-2.5 bg-card/60">
+          <Reveal variant="right" delay={140}>
+            <div className="card-interactive overflow-hidden rounded-xl border border-border/50 border-l-4 border-l-red-500 shadow-2xl">
+              <div className="flex items-center justify-between border-b border-border/40 bg-card/60 px-4 py-2.5">
                 <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
                   Sample finding
                 </span>
@@ -115,117 +166,71 @@ export default function HomePage() {
                   <span className="font-mono text-[10px]">live analysis</span>
                 </span>
               </div>
-              <div className="p-5 space-y-4">
+              <div className="space-y-4 p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
                       Section 7 · Content License
                     </span>
-                    <h3 className="font-display font-semibold text-base mt-1">
+                    <h3 className="mt-1 font-display text-base font-semibold">
                       Perpetual, irrevocable content license
                     </h3>
                   </div>
-                  <span className="shrink-0 inline-flex items-center gap-1.5 rounded-full border border-red-500/20 bg-red-500/10 px-2.5 py-1 text-red-500">
+                  <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-red-500/20 bg-red-500/10 px-2.5 py-1 text-red-500">
                     <AlertTriangle className="h-3 w-3" />
                     <span className="font-mono text-[10px] font-medium">HIGH</span>
                   </span>
                 </div>
                 <div className="relative pl-3">
-                  <span className="absolute left-0 top-1 bottom-1 w-0.5 rounded-full bg-primary/40" />
-                  <p className="text-xs text-foreground/70 italic leading-relaxed">
-                    &ldquo;You grant us a worldwide, royalty-free, perpetual, irrevocable license to use,
-                    reproduce, and modify your content…&rdquo;
+                  <span className="absolute bottom-1 left-0 top-1 w-0.5 rounded-full bg-primary/40" />
+                  <p className="text-xs italic leading-relaxed text-foreground/70">
+                    &ldquo;You grant us a worldwide, royalty-free, perpetual, irrevocable license to
+                    use, reproduce, and modify your content…&rdquo;
                   </p>
                 </div>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  The company keeps the right to use what you post <span className="text-foreground">forever</span> —
-                  even after you delete your account. Few services grant themselves this much.
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  The company keeps the right to use what you post{' '}
+                  <span className="text-foreground">forever</span> — even after you delete your
+                  account. Few services grant themselves this much.
                 </p>
               </div>
             </div>
-          </div>
+          </Reveal>
         </div>
 
         {/* stat strip */}
-        <div className="mt-16 grid grid-cols-2 sm:grid-cols-4 gap-px rounded-xl border border-border/50 overflow-hidden bg-border/30">
+        <Reveal
+          as="div"
+          delay={120}
+          className="mt-16 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border/50 bg-border/30 sm:grid-cols-4"
+        >
           {STATS.map((s) => (
             <div key={s.label} className="bg-card/60 px-4 py-5 text-center">
-              <div className="font-data text-2xl lg:text-3xl font-semibold text-primary">{s.value}</div>
+              <div className="font-data text-2xl font-semibold text-primary lg:text-3xl">
+                {s.value}
+              </div>
               <div className="mt-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
                 {s.label}
               </div>
             </div>
           ))}
-        </div>
+        </Reveal>
       </section>
 
-      {/* features */}
-      <section className="relative z-10 container mx-auto px-4 sm:px-6 lg:px-8 py-16 lg:py-20">
-        <div className="max-w-2xl">
-          <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary">What it does</span>
-          <h2 className="mt-3 font-display font-bold text-2xl lg:text-3xl tracking-tight">
-            Two ways a contract can hurt you — both covered.
-          </h2>
-        </div>
-        <div className="mt-10 grid md:grid-cols-3 gap-5">
-          {FEATURES.map((f, i) => (
-            <div
-              key={f.title}
-              className={`card-interactive rounded-xl border border-border/50 p-6 animate-slide-up stagger-${i + 1}`}
-            >
-              <div className="inline-grid place-items-center h-11 w-11 rounded-lg bg-primary/10 text-primary ring-1 ring-primary/20">
-                <f.icon className="h-5 w-5" />
-              </div>
-              <h3 className="mt-4 font-display font-semibold text-lg">{f.title}</h3>
-              <p className="mt-2 text-sm text-muted-foreground leading-relaxed">{f.body}</p>
-            </div>
-          ))}
-        </div>
-      </section>
+      <div id="catches" className="scroll-mt-28" />
+      <RiskCatalog />
 
-      {/* how it works */}
-      <section className="relative z-10 container mx-auto px-4 sm:px-6 lg:px-8 pb-20">
-        <div className="rounded-2xl border border-border/50 bg-card/40 p-8 lg:p-12">
-          <div className="text-center max-w-xl mx-auto">
-            <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary">How it works</span>
-            <h2 className="mt-3 font-display font-bold text-2xl lg:text-3xl tracking-tight">
-              From upload to verdict in three steps.
-            </h2>
-          </div>
-          <div className="mt-12 grid md:grid-cols-3 gap-8 lg:gap-12">
-            {STEPS.map((s, i) => (
-              <div key={s.title} className="relative text-center">
-                <div className="mx-auto inline-grid place-items-center h-14 w-14 rounded-xl bg-gradient-to-br from-primary to-accent text-primary-foreground">
-                  <s.icon className="h-6 w-6" />
-                </div>
-                <div className="mt-4 flex items-center justify-center gap-2">
-                  <span className="font-data text-xs text-primary">0{i + 1}</span>
-                  <h4 className="font-display font-semibold">{s.title}</h4>
-                </div>
-                <p className="mt-2 text-sm text-muted-foreground leading-relaxed max-w-xs mx-auto">{s.body}</p>
-              </div>
-            ))}
-          </div>
-          <div className="mt-12 text-center">
-            <Link to="/signup">
-              <Button size="lg" className="glow-primary h-12 px-7">
-                Get started
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </section>
+      <div id="engine" className="scroll-mt-28" />
+      <EngineDiagram />
 
-      {/* footer */}
-      <footer className="relative z-10 border-t border-border/40">
-        <div className="container mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 px-4 sm:px-6 lg:px-8 py-8">
-          <Logo showWordmark />
-          <p className="font-mono text-[11px] text-muted-foreground text-center sm:text-right">
-            Informational analysis, not legal advice. Built as an engineering portfolio project.
-          </p>
-        </div>
-      </footer>
+      <div id="evals" className="scroll-mt-28" />
+      <EvalReport />
+
+      <SampleFindings />
+
+      <Faq />
+
+      <FinalCta />
     </div>
   );
 }

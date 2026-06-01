@@ -7,7 +7,8 @@ export const useDocumentQuery = () => {
   return useMutation({
     mutationFn: (data: QueryRequest) => api.queryDocument(data),
     onError: (error: unknown) => {
-      const message = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Failed to query document';
+      // api interceptor reshapes errors to { message, detail, ... } — read `.message`.
+      const message = (error as { message?: string })?.message || 'Failed to query document';
       toast.error(message);
     },
   });
