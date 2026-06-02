@@ -74,12 +74,28 @@ async def _detect(
     )
 
 
+_ALIGN_SEVERITY_RANK = {"critical": 3, "high": 2, "medium": 1, "low": 0}
+
+
 def _align_predictions(
     findings: List[Dict[str, Any]],
     eval_clauses: List[Any],
 ) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-    """Build aligned (predictions, labels) lists keyed by clause_id."""
-    by_id = {str(f.get("clause_number")): f for f in findings}
+    """Build aligned (predictions, labels) lists keyed by clause_id.
+
+    When several findings hit the SAME clause, keep the highest-severity one —
+    mirroring production's ``_dedupe_findings`` (which collapses per-clause
+    duplicates to the strongest). A plain ``{clause_number: f}`` comprehension
+    kept the LAST finding instead, so the eval could score a different severity
+    than the detector actually surfaces.
+    """
+    by_id: Dict[str, Dict[str, Any]] = {}
+    for f in findings:
+        key = str(f.get("clause_number"))
+        cur = by_id.get(key)
+        if cur is None or _ALIGN_SEVERITY_RANK.get(str(f.get("severity")), -1) > \
+                _ALIGN_SEVERITY_RANK.get(str(cur.get("severity")), -1):
+            by_id[key] = f
     predictions: List[Dict[str, Any]] = []
     labels: List[Dict[str, Any]] = []
     for c in eval_clauses:
@@ -117,6 +133,10 @@ def _build_report(
     return {
         "dataset": dataset_name,
         "n_samples": len(eval_clauses),
+        # Primary severity figure: quadratic-weighted kappa (ordinal, robust to
+        # the base-rate paradox). Unweighted kappa kept as a secondary signal.
+        "severity_qwk": severity_metrics.quadratic_weighted_kappa(predictions, labels),
+        "severity_mae": severity_metrics.severity_mae(predictions, labels),
         "severity_kappa": confusion["overall_kappa"],
         "severity_kappa_interpretation": confusion[
             "overall_kappa_interpretation"
@@ -124,9 +144,11 @@ def _build_report(
         "per_severity_kappa": confusion["per_severity_kappa"],
         "macro_kappa": confusion["macro_kappa"],
         "category_kappa": cat_kappa,
+        "false_positive_rate": severity_metrics.false_positive_rate(predictions, labels),
         "confusion_matrix": confusion["confusion_matrix"],
         "precision_recall_by_severity": pr,
         "category_recall": cat_recall,
+        "selected_clause_ids": [str(c.clause_id) for c in eval_clauses],
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "git_commit": _git_commit_short(),
     }

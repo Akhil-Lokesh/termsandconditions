@@ -142,8 +142,12 @@ class TestParseResponse:
         assert len(result) == 1
         assert result[0]["clause_number"] == "5"
 
-    def test_ambiguous_suffix_match_skipped(self, detector):
-        """Multiple suffix matches → finding is skipped (ambiguous)."""
+    def test_ambiguous_suffix_match_attaches_to_first(self, detector):
+        """Multiple suffix matches → attach to the first candidate, never drop.
+
+        Recall-first: losing the exact clause number is acceptable, silently
+        dropping a confirmed risky-clause detection is not.
+        """
         clauses = [
             {"text": "Text A.", "section": "A", "clause_number": "A.3"},
             {"text": "Text B.", "section": "B", "clause_number": "B.3"},
@@ -155,9 +159,31 @@ class TestParseResponse:
         }
 
         result = detector._parse_response(response, clauses)
-        # Suffix ".3" matches both A.3 and B.3 — ambiguous.
-        # Numeric match also yields 2 candidates. Should be skipped.
-        assert len(result) == 0
+        # Suffix ".3" matches both A.3 and B.3 — ambiguous. Rather than drop the
+        # finding, attach it to the first candidate.
+        assert len(result) == 1
+        assert result[0]["clause_number"] == "A.3"
+        assert result[0]["severity"] == "high"
+
+    def test_compound_ref_expands_to_all_clauses(self, detector):
+        """A compound ref like "1-3" emits a finding for EACH resolved clause."""
+        clauses = [
+            {"text": "Text 1.", "section": "S", "clause_number": "1"},
+            {"text": "Text 2.", "section": "S", "clause_number": "2"},
+            {"text": "Text 3.", "section": "S", "clause_number": "3"},
+        ]
+        response = {
+            "risky_clauses": [
+                {"clause_number": "1-3", "severity": "high", "risk_category": "other", "explanation": "Spans clauses."}
+            ]
+        }
+
+        result = detector._parse_response(response, clauses)
+        # "1-3" cites three clauses; each should surface as its own finding so
+        # clauses 2 and 3 are not lost.
+        assert len(result) == 3
+        assert {r["clause_number"] for r in result} == {"1", "2", "3"}
+        assert all(r["severity"] == "high" for r in result)
 
 
 # ── _split_into_batches tests ────────────────────────────────────────────────
@@ -233,14 +259,16 @@ class TestDetectRiskyClauses:
         mock_claude.create_structured_completion.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_claude_failure_graceful(self, detector, mock_claude):
-        """Claude API failure returns empty list (graceful degradation)."""
+    async def test_total_claude_failure_raises(self, detector, mock_claude):
+        """A TOTAL LLM failure must RAISE, not silently return []. Returning an
+        empty list let the caller mark the document 'completed' with 0 anomalies —
+        a false 'no risks found' on a risk-analysis tool. The caller catches the
+        raise and marks the document failed instead."""
         mock_claude.create_structured_completion.side_effect = Exception("API timeout")
 
         clauses = [{"text": "Some clause.", "section": "A", "clause_number": "1"}]
-        result = await detector.detect_risky_clauses(clauses, "TestCo")
-
-        assert result == []
+        with pytest.raises(Exception):
+            await detector.detect_risky_clauses(clauses, "TestCo")
 
 
 # ── _format_clauses tests ────────────────────────────────────────────────────

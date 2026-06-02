@@ -36,8 +36,10 @@ export const SignupForm = () => {
       toast.success('Account created successfully!');
       navigate('/dashboard');
     } catch (error: unknown) {
+      // The api interceptor reshapes errors to { message, detail, ... }; read
+      // `.message`, not the non-existent error.response.data.detail.
       const message =
-        (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        (error as { message?: string })?.message ||
         'Signup failed. Please try again.';
       toast.error(message);
     } finally {
@@ -46,19 +48,19 @@ export const SignupForm = () => {
   };
 
   return (
-    <div className="w-full max-w-md px-4 sm:px-0">
-      <div className="card-interactive rounded-xl border border-border/50 overflow-hidden">
+    <div className="w-full px-4 sm:px-0">
+      <div className="card-interactive rounded-xl border border-border/50 overflow-hidden shadow-2xl shadow-black/40">
         {/* Header */}
-        <div className="p-4 lg:p-6 border-b border-border/30 text-center">
-          <h2 className="text-xl lg:text-2xl font-display font-bold text-foreground">Create Account</h2>
-          <p className="text-xs lg:text-sm text-muted-foreground mt-1">
+        <div className="px-6 pt-6 pb-4 lg:px-8 lg:pt-7 lg:pb-4 border-b border-border/30 text-center">
+          <h2 className="text-2xl lg:text-3xl font-display font-bold text-foreground">Create Account</h2>
+          <p className="text-sm text-muted-foreground mt-1.5">
             Sign up to start analyzing T&amp;C documents
           </p>
         </div>
 
         {/* Form */}
-        <div className="p-4 lg:p-6">
-          <form onSubmit={handleSubmit} className="space-y-4 lg:space-y-5">
+        <div className="px-6 pb-6 pt-5 lg:px-8 lg:pb-7 lg:pt-5">
+          <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">
               <Label htmlFor="fullName" className="text-sm font-medium text-foreground">
                 Full Name
@@ -72,7 +74,7 @@ export const SignupForm = () => {
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   disabled={isLoading}
-                  className="pl-10 bg-muted/30 border-border/50 focus:border-primary/50 focus:ring-primary/20"
+                  className="pl-10 h-11 bg-muted/30 border-border/50 focus:border-primary/50 focus:ring-primary/20"
                 />
               </div>
             </div>
@@ -91,7 +93,7 @@ export const SignupForm = () => {
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   disabled={isLoading}
-                  className="pl-10 bg-muted/30 border-border/50 focus:border-primary/50 focus:ring-primary/20"
+                  className="pl-10 h-11 bg-muted/30 border-border/50 focus:border-primary/50 focus:ring-primary/20"
                 />
               </div>
             </div>
@@ -111,7 +113,7 @@ export const SignupForm = () => {
                   required
                   disabled={isLoading}
                   minLength={8}
-                  className="pl-10 bg-muted/30 border-border/50 focus:border-primary/50 focus:ring-primary/20"
+                  className="pl-10 h-11 bg-muted/30 border-border/50 focus:border-primary/50 focus:ring-primary/20"
                 />
               </div>
               <p className="text-xs font-mono text-muted-foreground">
@@ -133,14 +135,14 @@ export const SignupForm = () => {
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
                   disabled={isLoading}
-                  className="pl-10 bg-muted/30 border-border/50 focus:border-primary/50 focus:ring-primary/20"
+                  className="pl-10 h-11 bg-muted/30 border-border/50 focus:border-primary/50 focus:ring-primary/20"
                 />
               </div>
             </div>
 
             <Button
               type="submit"
-              className="w-full glow-primary bg-primary hover:bg-primary/90 text-primary-foreground"
+              className="w-full h-12 text-base glow-primary bg-primary hover:bg-primary/90 text-primary-foreground"
               disabled={isLoading}
             >
               {isLoading ? (

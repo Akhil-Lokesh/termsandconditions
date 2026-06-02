@@ -163,6 +163,11 @@ class AnomalyBase(BaseModel):
     recommendation: Optional[str] = None
     prevalence: Optional[float] = Field(None, ge=0.0, le=1.0)
     risk_flags: Optional[List[str]] = None
+    # Concrete LLM-generated title + category. Stored on the Anomaly model and
+    # rendered by the UI; previously omitted from the response so every card
+    # fell back to a generic "Risk Detected" with no category.
+    risk_title: Optional[str] = None
+    risk_category: Optional[str] = None
 
 
 class AnomalyCreate(AnomalyBase):
@@ -369,6 +374,11 @@ class FeedbackRequest(BaseModel):
         le=1.0,
         description="Confidence score when anomaly was shown"
     )
+    suggested_severity: Optional[str] = Field(
+        None,
+        pattern="^(low|medium|high|critical)$",
+        description="User-suggested correct severity (sent by the UI; persisted on the feedback event)"
+    )
 
 
 class FeedbackStats(BaseModel):
@@ -387,11 +397,16 @@ class FeedbackStats(BaseModel):
 
 
 class FeedbackResponse(BaseModel):
-    """Response schema for feedback submission."""
+    """Response schema for feedback submission.
+
+    ``feedback_stats`` is optional/legacy: the active-learning buffer that
+    populated it was removed in the simple-engineering refactor. Feedback is now
+    persisted to the ``feedback_events`` table; the UI only reads success/message.
+    """
 
     success: bool
     message: str
-    feedback_stats: FeedbackStats
+    feedback_stats: Optional[FeedbackStats] = None
 
 
 # === Performance Metrics Schemas ===

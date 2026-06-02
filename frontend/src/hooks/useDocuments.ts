@@ -6,7 +6,9 @@ export const useDocuments = () => {
   return useQuery({
     queryKey: ['documents'],
     queryFn: async () => {
-      const response = await api.getDocuments();
+      // Fetch a generous page so the dashboard list AND its summary stats aren't
+      // silently capped at the API's default page size of 10.
+      const response = await api.getDocuments(0, 100);
       return response.documents; // Unwrap to get array
     },
   });
@@ -17,14 +19,23 @@ export const useDocument = (id: string) => {
     queryKey: ['documents', id],
     queryFn: () => api.getDocument(id),
     enabled: !!id,
-    // Poll every 3 seconds while document is still processing
+    retry: 2,
+    // Poll every 3 seconds while the document is still processing.
     refetchInterval: (query) => {
       const status = query.state.data?.processing_status;
-      // Keep polling if still analyzing
-      if (status === 'analyzing_anomalies' || status === 'processing' || status === 'embedding_completed') {
-        return 3000; // 3 seconds
-      }
-      return false; // Stop polling once completed or failed
+      const analyzing =
+        status === 'analyzing_anomalies' ||
+        status === 'processing' ||
+        status === 'embedding_completed';
+      const polls = query.state.dataUpdateCount + query.state.errorUpdateCount;
+
+      // Hard cap: a backend task that dies WITHOUT updating status leaves it stuck
+      // at "analyzing_anomalies"; without a ceiling the client would poll forever.
+      if (analyzing && polls < 60) return 3000; // ~3 min ceiling
+      // No data yet — initial load, or a transient fetch error right after upload
+      // navigation. Keep retrying briefly instead of giving up polling permanently.
+      if (status === undefined && polls < 5) return 3000;
+      return false; // Stop once completed/failed (or the ceiling is hit).
     },
   });
   return query;

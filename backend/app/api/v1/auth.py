@@ -7,7 +7,9 @@ Provides user registration, login, and token management with JWT.
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from datetime import timedelta
+import asyncio
 import logging
 
 from app.core.rate_limit import limiter
@@ -43,8 +45,13 @@ async def signup(
     """Register a new user account."""
     logger.info(f"Signup attempt for email: {user_data.email}")
 
+    # Normalize ONCE so the duplicate check and the stored value match. Checking
+    # the raw email let "User@X.com" slip past the check while storage lowercased
+    # it — the unique constraint then fired inside the try and surfaced as a 500.
+    normalized_email = user_data.email.lower().strip()
+
     # Check if user already exists
-    existing_user = db.query(User).filter(User.email == user_data.email).first()
+    existing_user = db.query(User).filter(User.email == normalized_email).first()
 
     if existing_user:
         logger.warning(f"Signup failed: Email already registered: {user_data.email}")
@@ -61,10 +68,13 @@ async def signup(
         )
 
     try:
+        # bcrypt is CPU-bound and slow by design — run it off the event loop.
+        hashed_password = await asyncio.to_thread(get_password_hash, user_data.password)
+
         # Create user
         user = User(
-            email=user_data.email.lower().strip(),
-            hashed_password=get_password_hash(user_data.password),
+            email=normalized_email,
+            hashed_password=hashed_password,
             full_name=user_data.full_name,
             is_active=True,
         )
@@ -84,6 +94,16 @@ async def signup(
             created_at=user.created_at,
         )
 
+    except IntegrityError:
+        # Unique-constraint race: another request registered this email between
+        # our existence check and the insert. Return a clean 409, not a 500.
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email already registered. Please use a different email or login.",
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Signup failed: {e}", exc_info=True)
         db.rollback()
@@ -113,8 +133,12 @@ async def login(
         db.query(User).filter(User.email == form_data.username.lower().strip()).first()
     )
 
-    # Verify user exists and password is correct
-    if not user or not verify_password(form_data.password, user.hashed_password):
+    # Verify user exists and password is correct. bcrypt verify is CPU-bound, so
+    # run it off the event loop; the `not user or` short-circuit still prevents
+    # calling verify when the user doesn't exist.
+    if not user or not await asyncio.to_thread(
+        verify_password, form_data.password, user.hashed_password
+    ):
         logger.warning(f"Login failed: Invalid credentials for {form_data.username}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

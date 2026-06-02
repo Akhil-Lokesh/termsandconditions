@@ -1,50 +1,93 @@
-## Summary
+# Terms & Conditions Risk Analyzer — detection overhaul, eval harness, and benchmarks
 
-Closes out the 5-layer upgrade plan documented in `nxt.md`:
+Rebuilds the detection engine around a measured insight, deletes the legacy
+multi-stage pipeline, and adds an evaluation harness rigorous enough to catch
+(and correct) its own measurement bugs.
 
-- **Layer 1** — eliminated ~2,555 LOC of dead code (13 unused files + 4 unused methods in `anomaly_detector.py`)
-- **Layer 2** — wired up feedback persistence (`FeedbackEvent` model + Alembic migration + write-through), DocumentTypeDetector → LLMClauseDetector routing, privacy-policy prompt variant
-- **Layer 3** — ingested UNFAIR-ToS (1,032 sentences) + OPP-115 (3,792 clauses); hand-labeled 149-clause gold holdout sealed behind import firewall + static grep gate; license attribution README
-- **Layer 4** — Claude Opus 4.7 judge + GPT-4o cross-checker (15% sample); Cohen's kappa metrics; SQLite verdict cache; CI regression gate that halts deploys on kappa drift > 0.03
-- **Layer 5** — 3-call self-consistency vote on critical findings (behind feature flag); per-doc cost cap (`MAX_LLM_USD_PER_DOC`); ablation harness; frontend feedback UI; 189-line operational runbook
+> Large PR: it folds the LLM migration, the simple-engineering refactor, the
+> detection-quality fixes, and the evaluation/benchmark work into the current
+> state of `feat/llm-detection-and-bug-fixes`.
 
-**Bonus (Layer 4-adjacent):** Cross-family Gemini Flash agreement harness — REST-based, no SDK dependency, free-tier safe (~9 RPM pacing), skip-safe when keys are missing, never-invents-numbers report generator.
+## Architecture: detection = 2 LLM passes + 1 ranker
 
-**Bug fix:** `app/core/config.py` had invalid Claude model IDs (`claude-sonnet-4.5-20250514` with dot syntax that the Anthropic API rejects). Production detector was silently 404'ing for anyone who didn't override `CLAUDE_MODEL` in `.env`.
+The old 6-stage pipeline was measured against a benchmark, shown to be
+net-subtractive, and **deleted** (~17K LOC removed; `anomaly_detector.py` went
+2,506 → 215 LOC). Detection is now three transparent steps:
 
-## Eval evidence
+1. **Risky-clause detection** — *checklist mode*: match the document against ~41
+   curated patterns (`app/core/risk_patterns.py`). The key lesson: open-ended
+   "find risky clauses" missed 5/6 critical clauses on a real ToS; reframing it
+   as "is each of these N patterns present?" 8×'d HIGH-severity recall. **LLMs
+   are reliable matchers, unreliable exhaustive searchers.**
+2. **Missing-protection detection** (`app/core/expected_protections.py`) — flags
+   absent consumer protections behind a relevance gate + a deterministic
+   presence guard.
+3. **Ranking** (`app/core/alert_ranker.py`) — recall-first budget; HIGH/MEDIUM
+   findings are never silently dropped.
 
-Cross-family inter-annotator agreement (Claude production detector vs Gemini 2.5 Flash, N=30, free tier):
+## Detection-quality fixes (this branch)
 
-| Metric | Value |
-| --- | --- |
-| Severity exact-match agreement | **60.0%** |
-| Risk-category exact-match agreement | **63.3%** |
-| Joint (severity + category) agreement | **36.7%** |
-| Severity Cohen's kappa | **+0.381** (_fair_, Landis-Koch) |
-| Category Cohen's kappa | **+0.495** |
-| Disagreements logged | **12** (see `backend/evals/gemini_disagreements.jsonl`) |
-| Gemini requests issued | **7** (0 rate-limited) |
+- **Recall root cause — clause-size cap.** Real ToS arrive as one unbroken
+  ~8,000-word line; the structure extractor collapsed the whole document into a
+  single clause, so the checklist had to exhaustively scan a wall of text and
+  missed buried clauses. `MAX_CLAUSE_WORDS=200` sentence-splits oversized clauses
+  (Apple ToS: 1 → 49 clauses), recovering law-enforcement, sole-remedy, and
+  perpetual-license findings.
+- **Same-clause deduplication.** Several catalog patterns matching one clause
+  produced duplicate alerts; a second dedup pass collapses by clause location,
+  keeping the highest severity.
+- **Missing-protection inversion guard.** The missing-check flagged protections
+  the document plainly grants (e.g. "30 days before changes"); a deterministic
+  presence guard suppresses these false positives.
+- **Severity calibration.** Behavioral advertising capped at MEDIUM (disclosed
+  first-party ad targeting ≠ data sale, which stays critical); removed residual
+  prevalence-based suppressors from the self-consistency vote prompts.
+- **Anti-hallucination** evidence requirement added to the detection prompts.
+- **Bug fixes:** invalid dotted Claude model IDs (`claude-sonnet-4.5-…` → 404);
+  detector batch timeouts; integration-test auth fixtures (stale `/register`
+  path; graceful skip when no live DB).
 
-Full report at `backend/evals/COMPARATIVE_REPORT.md` (auto-generated, regenerates on each agreement run).
+## Evaluation harness
+
+- **Sealed gold holdout** — 149 hand-labeled clauses behind an import firewall +
+  CI grep gate (production code physically cannot read it).
+- **Public benchmark — UNFAIR-ToS (LexGLUE).** Mixed fair/unfair set (N=180, 95%
+  bootstrap CIs): **84.1% recall [74.6–92.5] at a 4.3% false-positive rate
+  [0.9–8.3]**; category recall 54%. Honest caveat (documented in
+  `backend/evals/BENCHMARK.md`): this set's gold *severity* is a category proxy,
+  so severity is not meaningfully measurable on it.
+- **Cross-family agreement vs Gemini 2.5 Flash** — independent model, same
+  rubric, aligned flag-or-decline task: severity κ **+0.419 (moderate)**,
+  category κ +0.531, joint 60% (N=30). Auto-generated
+  `backend/evals/COMPARATIVE_REPORT.md`.
+- **Fair metrics:** quadratic-weighted kappa + MAE (the unweighted-kappa
+  base-rate paradox is documented and retired as a headline); `false_positive_rate`
+  on fair negatives; percentile bootstrap CIs; CI gate halts on κ / QWK drift.
+
+**The rigor is the point:** the harness diagnosed its own measurement bugs (the
+kappa paradox and category-proxy labels) and corrected the methodology rather
+than quoting flattering-but-vacuous numbers.
 
 ## Test plan
 
-- [x] `pytest backend/tests/test_llm_clause_detector.py backend/evals/tests/test_metrics.py backend/evals/tests/test_kappa.py backend/evals/tests/test_judges.py backend/evals/tests/test_ci_gate.py backend/tests/test_firewall.py backend/evals/tests/test_gemini_judge.py backend/evals/tests/test_gemini_agreement.py backend/evals/tests/test_comparative_report.py --noconftest -q` → **119 passed, 1 skipped**
-- [x] `bash backend/scripts/check_holdout_firewall.sh` → static grep gate passes (no `gold_holdout` references in `app/`)
-- [x] Gemini agreement run executed against real APIs (Claude Sonnet 4.5 + Gemini 2.5 Flash) — numbers above are real, not synthetic
-- [x] Skip-safe: `python -m evals.run_gemini_agreement` without `GEMINI_API_KEY` → exits 0 cleanly, no artifact written
-- [x] No OpenAI/GPT references in any new Gemini-related file (verified via grep)
-- [ ] **CI eval-gate workflow** — first PR run will establish the actual CI behavior on this branch
+- [x] Backend unit + integration suite green (integration skips cleanly without a
+  live DB).
+- [x] 95 eval-harness tests pass (`pytest backend/evals/tests -q`).
+- [x] Gold-holdout firewall grep gate passes (no `gold_holdout` refs in `app/`).
+- [x] Frontend (Vite) builds clean.
+- [x] Benchmark + agreement runs executed against real APIs — numbers above are
+  real, not synthetic; runs are skip-safe when keys are absent.
 
-## Known follow-ups (not blocking this PR)
+## Known follow-ups (not blocking; tracked in `backend/evals/BENCHMARK_IMPROVEMENT_PLAN.md`)
 
-- `backend/evals/baseline.json` — the Cohen's kappa baseline against the gold holdout. Requires a paid Claude + OpenAI judge run (~$2.50). Once generated, the CI regression gate becomes meaningfully comparative.
-- `backend/evals/vote_ablation_report.json` — required before flipping `SELF_CONSISTENCY_CRITICAL=true` in production. Requires ~$5 in Claude API budget. Decision criterion: kappa lift > 0.02.
-- Gold holdout distribution: currently C:10 H:9 M:70 L:60 (target was 20/40/50/30). Each tier has ≥9 samples so per-tier kappa is computable; expanding criticals to 20 is a 15-minute follow-up via `python -m evals.datasets.regrade_gold_holdout`.
+- **A3** — hand-adjudicated severity subset (separates real miscalibration from
+  the LexGLUE taxonomy artifact; unblocks detector severity tuning).
+- **A5** — document-level (end-to-end) evaluation through the real orchestrator.
 
 ## Security note
 
-`app/core/config.py` previously hardcoded broken Claude model IDs as defaults. Anyone who deployed without setting `CLAUDE_MODEL` in `.env` had a non-functional production detector. This PR fixes that — but worth grepping any deployed envs for the bad IDs after merge.
+Rotate the Anthropic API key before/after merge — a key was exposed during
+development. `app/core/config.py` previously hardcoded broken Claude model IDs as
+defaults; grep deployed envs for `claude-*4.5-*` dotted IDs after merge.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)

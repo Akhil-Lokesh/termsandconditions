@@ -14,6 +14,7 @@ from app.api.deps import get_db, get_current_active_user
 from app.models.user import User
 from app.models.document import Document
 from app.models.anomaly import Anomaly
+from app.models.feedback_event import FeedbackEvent
 from app.schemas.anomaly import (
     AnomalyResponse,
     AnomalyListResponse,
@@ -49,6 +50,7 @@ def _anomaly_to_ranked_dict(anomaly: Anomaly) -> dict:
         "clause_text": anomaly.clause_text or "",
         "section": anomaly.section,
         "severity": severity,
+        "risk_title": getattr(anomaly, "risk_title", None) or None,
         "risk_category": anomaly.risk_category or "other",
         "prevalence": anomaly.prevalence,
         "explanation": anomaly.explanation,
@@ -72,6 +74,129 @@ def _anomaly_to_ranked_dict(anomaly: Anomaly) -> dict:
             "bonuses": {},
             "bonus_total": 0.0,
         },
+    }
+
+
+def _persist_detection(db: Session, document: Document, detection_result: dict) -> list:
+    """Replace a document's anomalies with a fresh detection result, atomically.
+
+    The caller MUST run detection BEFORE calling this — we only touch the DB once
+    results are in hand. The delete + inserts share one transaction, so a failure
+    mid-write rolls back and never leaves the document with zero anomalies.
+    """
+    all_anomalies = (
+        detection_result.get("high_severity_alerts", [])
+        + detection_result.get("medium_severity_alerts", [])
+        + detection_result.get("low_severity_alerts", [])
+    )
+
+    db.query(Anomaly).filter(Anomaly.document_id == document.id).delete()
+
+    saved = []
+    for anomaly_data in all_anomalies:
+        prevalence_value = anomaly_data.get("prevalence", 0.0)
+        if isinstance(prevalence_value, dict):
+            prevalence_value = prevalence_value.get("prevalence", 0.0)
+
+        detected_indicators = anomaly_data.get("detected_indicators", [])
+        if not isinstance(detected_indicators, list):
+            detected_indicators = []
+
+        anomaly = Anomaly(
+            document_id=document.id,
+            clause_text=anomaly_data.get("clause_text", ""),
+            section=anomaly_data.get("section", "Unknown"),
+            clause_number=anomaly_data.get("clause_number", ""),
+            severity=anomaly_data.get("severity", "medium"),
+            risk_title=anomaly_data.get("risk_title"),
+            explanation=anomaly_data.get("explanation", ""),
+            consumer_impact=anomaly_data.get("consumer_impact", ""),
+            recommendation=anomaly_data.get("recommendation", ""),
+            risk_category=anomaly_data.get("risk_category", "general"),
+            prevalence=float(prevalence_value) if prevalence_value else 0.0,
+            detected_indicators=detected_indicators,
+        )
+        db.add(anomaly)
+        saved.append(anomaly)
+
+    critical_count = sum(1 for a in saved if a.severity == "critical")
+    high_count = sum(1 for a in saved if a.severity == "high")
+    medium_count = sum(1 for a in saved if a.severity == "medium")
+
+    document.anomaly_count = len(saved)
+    document.risk_score = detection_result.get("overall_risk_score", 5)
+    document.risk_level = (
+        "Critical" if critical_count > 0
+        else "High" if high_count > 0
+        else "Medium" if medium_count > 2
+        else "Low"
+    )
+    document.processing_status = "completed"
+
+    db.commit()
+    return saved
+
+
+def _build_db_report(document: Document, anomalies: list) -> dict:
+    """Build the AnomalyReportResponse-shaped dict from persisted anomalies.
+
+    Single source of truth for the report shape so the cached-read path and the
+    force-reanalysis path can never drift into producing invalid responses.
+    """
+    from datetime import datetime, timezone  # noqa: PLC0415
+
+    metadata = document.document_metadata or {}
+    company_name = metadata.get("company_name", metadata.get("company", "Unknown"))
+
+    high_alerts = [
+        _anomaly_to_ranked_dict(a) for a in anomalies
+        if a.severity in ("critical", "high")
+    ]
+    medium_alerts = [_anomaly_to_ranked_dict(a) for a in anomalies if a.severity == "medium"]
+    low_alerts = [_anomaly_to_ranked_dict(a) for a in anomalies if a.severity == "low"]
+
+    total = len(anomalies)
+    risk_score = document.risk_score or 5.0
+
+    return {
+        "document_id": document.id,
+        "company_name": company_name,
+        "analysis_date": (
+            document.updated_at.isoformat()
+            if getattr(document, "updated_at", None)
+            else datetime.now(timezone.utc).isoformat()
+        ),
+        "overall_risk_score": max(1.0, min(risk_score, 10.0)),
+        "high_severity_alerts": high_alerts,
+        "medium_severity_alerts": medium_alerts,
+        "low_severity_alerts": low_alerts,
+        "suppressed_alerts_count": 0,
+        "total_anomalies_detected": total,
+        "total_alerts_shown": total,
+        "compound_risks": [],
+        "ranking_metadata": {
+            "total_detected": total,
+            "total_shown": total,
+            "total_suppressed": 0,
+            "suppression_rate": 0.0,
+            "avg_score": 0.0,
+            "top_score": 0.0,
+            "top_categories": [],
+            "alert_budget_applied": False,
+            "user_preferences_applied": False,
+        },
+        "pipeline_performance": {
+            "stage1_detections": total,
+            "stage2_passed": total,
+            "stage2_filtered_out": 0,
+            "stage3_clustered": total,
+            "stage4_compounds": 0,
+            "stage5_calibrated": total,
+            "stage6_ranked": total,
+            "total_clauses_analyzed": document.clause_count or 0,
+            "total_processing_time_ms": 0.0,
+        },
+        "competitive_benchmark": None,
     }
 
 
@@ -121,68 +246,55 @@ async def get_performance_metrics(
     logger.info(f"Performance metrics requested by user: {current_user.id}")
 
     try:
-        # Initialize detector
-        detector = AnomalyDetector()
-
-        # Get feedback stats
-        feedback_stats = detector.active_learning.get_feedback_stats()
-
-        # Calculate aggregate metrics from database
+        # Aggregate metrics straight from the DB. The ActiveLearningManager /
+        # confidence calibrator that used to feed these numbers was removed in the
+        # simple-engineering refactor, so we derive everything we can from the
+        # persisted feedback_events and report the calibrator fields as inert.
         total_documents = db.query(func.count(Document.id)).scalar() or 0
         total_anomalies = db.query(func.count(Anomaly.id)).scalar() or 0
 
-        # Calculate average alerts per document
+        total_feedback = db.query(func.count(FeedbackEvent.id)).scalar() or 0
+        dismissals = (
+            db.query(func.count(FeedbackEvent.id))
+            .filter(FeedbackEvent.user_action.in_(["dismiss", "not_applicable", "disagree"]))
+            .scalar()
+            or 0
+        )
+
         avg_alerts_per_doc = (
             total_anomalies / total_documents if total_documents > 0 else 0.0
         )
+        dismissal_rate = (dismissals / total_feedback) if total_feedback > 0 else 0.0
+        # Dismissals are the best available proxy for false positives now that the
+        # calibrator no longer tracks per-clause outcomes.
+        false_positive_rate = dismissal_rate
 
-        # Calculate false positive rate from feedback
-        # False positive rate = dismissals / total feedback
-        false_positive_rate = feedback_stats['dismissal_rate']
-
-        # Get ECE if calibrator is fitted
-        ece = None
-        if detector.confidence_calibrator.is_fitted:
-            # ECE is tracked internally but not directly accessible
-            # For now, return None or implement getter
-            ece = None  # ECE not computed for cached results
-
-        # Determine health status
-        # Critical: dismissal rate > 40%
-        # Warning: dismissal rate > 25%
-        # Healthy: dismissal rate <= 25%
-        if feedback_stats['dismissal_rate'] > 0.40:
+        if dismissal_rate > 0.40:
             health_status = "critical"
-        elif feedback_stats['dismissal_rate'] > 0.25:
+        elif dismissal_rate > 0.25:
             health_status = "warning"
         else:
             health_status = "healthy"
 
-        # Calculate average processing time
-        # This would ideally come from stored metrics
-        # For now, use a placeholder
-        avg_processing_time = 0.0  # Not tracked per-request
-
         metrics = PerformanceMetrics(
             total_documents_analyzed=total_documents,
             total_anomalies_detected=total_anomalies,
-            total_feedback_collected=feedback_stats['total_feedback_collected'],
+            total_feedback_collected=total_feedback,
             false_positive_rate=false_positive_rate,
-            dismissal_rate=feedback_stats['dismissal_rate'],
+            dismissal_rate=dismissal_rate,
             average_alerts_per_document=avg_alerts_per_doc,
-            expected_calibration_error=ece,
-            calibrator_fitted=feedback_stats['calibrator_fitted'],
-            retrain_count=feedback_stats['retrain_count'],
-            last_retrain_date=feedback_stats['last_retrain_date'],
-            avg_processing_time_ms=avg_processing_time,
-            pipeline_health_status=health_status
+            expected_calibration_error=None,
+            calibrator_fitted=False,
+            retrain_count=0,
+            last_retrain_date=None,
+            avg_processing_time_ms=0.0,
+            pipeline_health_status=health_status,
         )
 
         logger.info(
             f"Performance metrics: {total_documents} docs, "
-            f"{total_anomalies} anomalies, "
-            f"dismissal rate: {feedback_stats['dismissal_rate']:.1%}, "
-            f"health: {health_status}"
+            f"{total_anomalies} anomalies, {total_feedback} feedback events, "
+            f"dismissal rate: {dismissal_rate:.1%}, health: {health_status}"
         )
 
         return metrics
@@ -203,9 +315,9 @@ async def get_performance_metrics(
     Re-run anomaly detection on an existing document.
 
     This will:
-    1. Delete all existing anomalies for the document
-    2. Re-run the full 6-stage anomaly detection pipeline
-    3. Save new anomalies with updated prevalence scores
+    1. Re-run the LLM checklist detection pipeline on the stored clauses
+    2. Atomically replace the document's anomalies with the new results
+       (existing anomalies are preserved if detection fails)
 
     Use this to refresh anomaly analysis after system improvements.
     """,
@@ -218,7 +330,6 @@ async def reanalyze_document(
     current_user: User = Depends(get_current_active_user),
 ):
     """Re-run anomaly detection on an existing document."""
-    from app.api.deps import get_embedding_service, get_pinecone_service
     from app.models.clause import Clause
 
     logger.info(f"Re-analyzing document: {document_id}")
@@ -264,92 +375,39 @@ async def reanalyze_document(
 
     sections = list(sections_dict.values())
 
-    # Delete existing anomalies
-    deleted_count = db.query(Anomaly).filter(Anomaly.document_id == document_id).delete()
-    db.commit()
-    logger.info(f"Deleted {deleted_count} existing anomalies")
-
-    # Initialize services (these depend on app.state, accessed via request)
-    embedding_service = get_embedding_service(request)
-    pinecone_service = get_pinecone_service(request)
-    if pinecone_service is None or embedding_service is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Anomaly detection services are not available. Please try again shortly.",
-        )
-
-    # Run anomaly detection
-    detector = AnomalyDetector(
-        embedding_service=embedding_service,
-        pinecone_service=pinecone_service,
-        db=db
-    )
-
     company_name = "Unknown"
     if document.document_metadata:
-        company_name = document.document_metadata.get("company_name",
-                       document.document_metadata.get("company", "Unknown"))
-
-    detection_result = await detector.detect_anomalies(
-        document_id=document_id,
-        sections=sections,
-        company_name=company_name,
-        service_type="general",
-    )
-
-    # Extract anomalies from detection result
-    all_anomalies = (
-        detection_result.get('high_severity_alerts', []) +
-        detection_result.get('medium_severity_alerts', []) +
-        detection_result.get('low_severity_alerts', [])
-    )
-
-    logger.info(f"Detected {len(all_anomalies)} anomalies")
-
-    # Save new anomalies to database
-    saved_anomalies = []
-    for anomaly_data in all_anomalies:
-        # Extract prevalence
-        prevalence_value = anomaly_data.get("prevalence", 0.0)
-        if isinstance(prevalence_value, dict):
-            prevalence_value = prevalence_value.get("prevalence", 0.0)
-
-        # Extract detected indicators
-        detected_indicators = anomaly_data.get("detected_indicators", [])
-        if not isinstance(detected_indicators, list):
-            detected_indicators = []
-
-        anomaly = Anomaly(
-            document_id=document_id,
-            clause_text=anomaly_data.get("clause_text", ""),
-            section=anomaly_data.get("section", "Unknown"),
-            clause_number=anomaly_data.get("clause_number", ""),
-            severity=anomaly_data.get("severity", "medium"),
-            explanation=anomaly_data.get("explanation", ""),
-            consumer_impact=anomaly_data.get("consumer_impact", ""),
-            recommendation=anomaly_data.get("recommendation", ""),
-            risk_category=anomaly_data.get("risk_category", "general"),
-            prevalence=float(prevalence_value) if prevalence_value else 0.0,
-            detected_indicators=detected_indicators,
+        company_name = document.document_metadata.get(
+            "company_name", document.document_metadata.get("company", "Unknown")
         )
-        db.add(anomaly)
-        saved_anomalies.append(anomaly)
 
-    # Update document stats
-    critical_count = len([a for a in saved_anomalies if a.severity == "critical"])
-    high_count = len([a for a in saved_anomalies if a.severity == "high"])
-    medium_count = len([a for a in saved_anomalies if a.severity == "medium"])
+    # Run detection FIRST (pure-LLM; no embedding/pinecone services required), then
+    # swap the anomalies atomically. The old code deleted all anomalies up front and
+    # could then 503, destroying data — here a detection failure leaves the existing
+    # anomalies untouched.
+    detector = AnomalyDetector(db=db)
+    try:
+        detection_result = await detector.detect_anomalies(
+            document_id=document_id,
+            sections=sections,
+            company_name=company_name,
+            service_type="general",
+        )
+    except Exception as e:
+        logger.error(f"Re-analysis detection failed for {document_id}: {e}", exc_info=True)
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Re-analysis failed while running detection. Your existing results were preserved.",
+        )
 
-    document.anomaly_count = len(saved_anomalies)
-    document.risk_score = detection_result.get("overall_risk_score", 5)
-    document.risk_level = "Critical" if critical_count > 0 else "High" if high_count > 0 else "Medium" if medium_count > 2 else "Low"
-    document.processing_status = "completed"
-
-    db.commit()
-
+    saved_anomalies = _persist_detection(db, document, detection_result)
     logger.info(f"Re-analysis complete: {len(saved_anomalies)} anomalies saved")
 
     # Build response
+    critical_count = sum(1 for a in saved_anomalies if a.severity == "critical")
+    high_count = sum(1 for a in saved_anomalies if a.severity == "high")
+    medium_count = sum(1 for a in saved_anomalies if a.severity == "medium")
     low_count = len(saved_anomalies) - critical_count - high_count - medium_count
 
     return AnomalyListResponse(
@@ -365,6 +423,8 @@ async def reanalyze_document(
                 consumer_impact=a.consumer_impact,
                 recommendation=a.recommendation,
                 prevalence=a.prevalence,
+                risk_title=a.risk_title,
+                risk_category=a.risk_category,
                 risk_flags=a.risk_flags or [ind.get('name', ind.get('indicator', str(ind))) for ind in (a.detected_indicators or [])],
                 created_at=a.created_at,
             )
@@ -497,6 +557,8 @@ async def get_anomalies(
                 recommendation=a.recommendation,
                 prevalence=a.prevalence,
                 # Use detected_indicators if risk_flags is empty (migration compatibility)
+                risk_title=a.risk_title,
+                risk_category=a.risk_category,
                 risk_flags=a.risk_flags or [ind.get('name', ind.get('indicator', str(ind))) for ind in (a.detected_indicators or [])],
                 created_at=a.created_at,
             )
@@ -557,6 +619,8 @@ async def get_anomaly_detail(
         consumer_impact=anomaly.consumer_impact,
         recommendation=anomaly.recommendation,
         prevalence=anomaly.prevalence,
+        risk_title=anomaly.risk_title,
+        risk_category=anomaly.risk_category,
         # Use detected_indicators if risk_flags is empty (migration compatibility)
         risk_flags=anomaly.risk_flags or [ind.get('name', ind.get('indicator', str(ind))) for ind in (anomaly.detected_indicators or [])],
         created_at=anomaly.created_at,
@@ -568,25 +632,20 @@ async def get_anomaly_detail(
     response_model=AnomalyReportResponse,
     summary="Get Complete Anomaly Report",
     description="""
-    Get a complete anomaly analysis report using the full 6-stage detection pipeline.
+    Get a complete anomaly analysis report.
 
-    **Pipeline Stages:**
-    1. Multi-Method Detection (Pattern, Semantic, Statistical)
-    2. Context Filtering (Industry, Service Type, Temporal)
-    3. Clustering & Deduplication (ML-powered)
-    4. Compound Risk Detection (Systemic patterns)
-    5. Confidence Calibration (Isotonic regression)
-    6. Alert Ranking & Budget (MAX_ALERTS=10)
+    By default this serves the pre-computed results stored at upload time. With
+    `force_reanalysis=true` it re-runs the LLM checklist detector on the stored
+    clauses, persists the fresh results, and returns them.
 
     **Query Parameters:**
-    - `user_preferences`: Optional JSON object for personalization
-    - `force_reanalysis`: Skip cache and rerun full pipeline
+    - `force_reanalysis`: Skip cache and re-run detection
+    - `user_preferences`: Accepted for backward compatibility; currently ignored
 
     **Returns:**
     - Overall risk score (1-10)
     - Categorized alerts (HIGH/MEDIUM/LOW)
-    - Compound risk patterns
-    - Pipeline performance metrics
+    - Ranking + (legacy-shaped) pipeline metadata
     """,
 )
 async def get_anomaly_report(
@@ -654,88 +713,23 @@ async def get_anomaly_report(
             if not anomalies:
                 logger.warning(f"Document {document_id} is 'completed' but has 0 anomalies in DB")
 
-            high_alerts = [
-                _anomaly_to_ranked_dict(a) for a in anomalies
-                if a.severity in ("critical", "high")
-            ]
-            medium_alerts = [
-                _anomaly_to_ranked_dict(a) for a in anomalies
-                if a.severity == "medium"
-            ]
-            low_alerts = [
-                _anomaly_to_ranked_dict(a) for a in anomalies
-                if a.severity == "low"
-            ]
-
-            total = len(anomalies)
-            risk_score = document.risk_score or 5.0
-
             logger.info(
-                f"Report from DB: {total} anomalies "
-                f"({len(high_alerts)} high, {len(medium_alerts)} medium, {len(low_alerts)} low), "
-                f"risk score: {risk_score:.1f}/10"
+                f"Report from DB: {len(anomalies)} anomalies, "
+                f"risk score: {(document.risk_score or 5.0):.1f}/10"
             )
-
-            return {
-                "document_id": document_id,
-                "company_name": company_name,
-                "analysis_date": (
-                    document.updated_at.isoformat()
-                    if hasattr(document, 'updated_at') and document.updated_at
-                    else datetime.now(timezone.utc).isoformat()
-                ),
-                "overall_risk_score": max(1.0, min(risk_score, 10.0)),
-                "high_severity_alerts": high_alerts,
-                "medium_severity_alerts": medium_alerts,
-                "low_severity_alerts": low_alerts,
-                "suppressed_alerts_count": 0,
-                "total_anomalies_detected": total,
-                "total_alerts_shown": total,
-                "compound_risks": [],
-                "ranking_metadata": {
-                    "total_detected": total,
-                    "total_shown": total,
-                    "total_suppressed": 0,
-                    "suppression_rate": 0.0,
-                    "avg_score": 0.0,
-                    "top_score": 0.0,
-                    "top_categories": [],
-                    "alert_budget_applied": False,
-                    "user_preferences_applied": False
-                },
-                "pipeline_performance": {
-                    "stage1_detections": total,
-                    "stage2_passed": total,
-                    "stage2_filtered_out": 0,
-                    "stage3_clustered": total,
-                    "stage4_compounds": 0,
-                    "stage5_calibrated": total,
-                    "stage6_ranked": total,
-                    "total_clauses_analyzed": document.clause_count or 0,
-                    "total_processing_time_ms": 0.0
-                },
-                "competitive_benchmark": None
-            }
+            return _build_db_report(document, anomalies)
 
         except HTTPException:
             raise
         except Exception as e:
             logger.error(f"Error reading DB report, falling through to reanalysis: {e}", exc_info=True)
 
-    # ─── REANALYSIS PATH: Run pipeline using DB clauses ───
+    # ─── REANALYSIS PATH: Run detection using DB clauses, persist, serve from DB ───
+    # `user_preferences` is accepted for backward compatibility but ignored — the
+    # per-user preference hook (detector.set_user_preferences) was removed in the
+    # simple-engineering refactor.
     try:
-        import json
         from app.models.clause import Clause
-
-        prefs = None
-        if user_preferences:
-            try:
-                prefs = json.loads(user_preferences)
-            except json.JSONDecodeError:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid user_preferences JSON format"
-                )
 
         # Load clauses from DB (properly extracted during upload)
         db_clauses = (
@@ -789,11 +783,9 @@ async def get_anomaly_report(
 
         service_type = metadata.get('document_type', 'general')
 
-        detector = AnomalyDetector()
-        if prefs:
-            detector.set_user_preferences(prefs)
+        detector = AnomalyDetector(db=db)
 
-        logger.info(f"Running 6-stage pipeline on {len(sections)} sections (force_reanalysis={force_reanalysis})")
+        logger.info(f"Running detection on {len(sections)} sections (force_reanalysis={force_reanalysis})")
         report = await detector.detect_anomalies(
             document_id=document_id,
             sections=sections,
@@ -806,24 +798,29 @@ async def get_anomaly_report(
             }
         )
 
-        if isinstance(report, dict):
-            logger.info(
-                f"Pipeline complete: {report.get('total_alerts_shown', 0)}/{report.get('total_anomalies_detected', 0)} "
-                f"alerts shown, risk score: {report.get('overall_risk_score', 0):.1f}/10"
-            )
-            return report
-        else:
-            # Shouldn't happen, but handle gracefully
+        if not isinstance(report, dict):
             logger.warning(f"Unexpected report type: {type(report)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Pipeline returned unexpected format"
             )
 
+        # Persist the fresh results, then serve the SAME validated shape as the
+        # cached path. Previously this returned the raw detector dict, whose
+        # pipeline_performance/ranking_metadata keys no longer match
+        # AnomalyReportResponse → ResponseValidationError (500).
+        saved = _persist_detection(db, document, report)
+        logger.info(
+            f"Reanalysis complete: {len(saved)} anomalies persisted, "
+            f"risk score: {report.get('overall_risk_score', 0):.1f}/10"
+        )
+        return _build_db_report(document, saved)
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error generating anomaly report: {e}", exc_info=True)
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to generate anomaly report. Please try again."
@@ -835,7 +832,7 @@ async def get_anomaly_report(
     response_model=FeedbackResponse,
     summary="Submit User Feedback",
     description="""
-    Submit user feedback on a detected anomaly for active learning.
+    Submit user feedback on a detected anomaly.
 
     **User Actions:**
     - `helpful`: User found the anomaly helpful
@@ -843,15 +840,8 @@ async def get_anomaly_report(
     - `dismiss`: User dismissed as not important
     - `not_applicable`: Anomaly doesn't apply to user's situation
 
-    **Active Learning:**
-    - Feedback improves confidence calibration over time
-    - Calibrator retrains automatically after 100 samples
-    - System monitors dismissal rate for quality control
-
-    **Returns:**
-    - Success status
-    - Current feedback statistics
-    - Buffer progress toward next retraining
+    Feedback is persisted to the `feedback_events` table and aggregated into the
+    dismissal-rate metric on `/performance`.
     """,
 )
 async def submit_feedback(
@@ -863,7 +853,8 @@ async def submit_feedback(
     """
     Submit user feedback on an anomaly detection.
 
-    Feedback is used for active learning to improve confidence calibration.
+    Feedback is persisted to the ``feedback_events`` table for later analysis
+    (it surfaces in the dismissal-rate stat on /performance).
     """
     logger.info(f"Feedback received for anomaly: {anomaly_id}")
 
@@ -881,59 +872,39 @@ async def submit_feedback(
             detail="Anomaly not found"
         )
 
+    # The FeedbackRequest schema already constrains user_action via its regex
+    # pattern, so anything that reaches here is valid.
     try:
-        # Initialize detector (to access active learning manager)
-        detector = AnomalyDetector()
-
-        # Map user action to internal format
-        # API uses: helpful, dismiss, not_applicable, acted_on
-        # Internal uses: helpful, dismissed, false_positive, acted_on
-        action_mapping = {
-            'helpful': 'helpful',
-            'dismiss': 'dismissed',
-            'not_applicable': 'false_positive',
-            'acted_on': 'acted_on'
-        }
-        internal_action = action_mapping.get(feedback.user_action)
-
-        if not internal_action:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid user action: {feedback.user_action}"
-            )
-
-        # Collect feedback
-        result = detector.collect_user_feedback(
-            anomaly_id=anomaly_id,
-            user_action=internal_action,
-            confidence_at_detection=feedback.confidence_at_detection
+        event = FeedbackEvent(
+            user_id=current_user.id,
+            anomaly_id=anomaly.id,
+            document_id=anomaly.document_id,
+            user_action=feedback.user_action,
+            original_severity=anomaly.severity,
+            suggested_severity=feedback.suggested_severity,
+            confidence_score=feedback.confidence_at_detection,
         )
+        db.add(event)
+        db.commit()
 
         logger.info(
-            f"Feedback collected: action={feedback.user_action}, "
+            f"Feedback persisted: anomaly={anomaly_id} action={feedback.user_action} "
             f"confidence={feedback.confidence_at_detection:.3f}"
         )
-
-        # Log optional text feedback
         if feedback.feedback_text:
-            safe_text = repr(feedback.feedback_text[:200])
-            logger.info(f"User feedback text: {safe_text}")
-
-        # Get current stats
-        from app.schemas.anomaly import FeedbackStats
-        stats = FeedbackStats(**result['feedback_stats'])
+            logger.info(f"User feedback text: {feedback.feedback_text[:200]!r}")
 
         return FeedbackResponse(
-            success=result['success'],
-            message=result['message'],
-            feedback_stats=stats
+            success=True,
+            message="Feedback recorded. Thank you!",
         )
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error collecting feedback: {e}", exc_info=True)
+        logger.error(f"Error recording feedback: {e}", exc_info=True)
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to collect feedback. Please try again."
+            detail="Failed to record feedback. Please try again."
         )

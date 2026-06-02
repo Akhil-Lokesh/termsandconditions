@@ -6,7 +6,7 @@ Uses Pydantic Settings to load and validate environment variables.
 """
 
 import os
-from typing import List
+from typing import List, Optional
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import json
@@ -62,6 +62,7 @@ class Settings(BaseSettings):
     BACKEND_CORS_ORIGINS: List[str] = [
         "http://localhost:5173",
         "http://localhost:5174",
+        "http://localhost:5175",
         "http://localhost:3000",
         "http://localhost:8000",
     ]
@@ -77,6 +78,11 @@ class Settings(BaseSettings):
 
     # Rate Limiting
     RATE_LIMIT_PER_HOUR: int = 100
+    # Storage backend for the rate limiter. Default (None) = in-process memory,
+    # which is fine for a single worker but does NOT share counts across
+    # processes/instances. Set to a shared store (e.g. "redis://host:6379/1") in
+    # multi-worker / multi-instance deployments so limits are enforced globally.
+    RATE_LIMIT_STORAGE_URI: Optional[str] = None
 
     # LLM Cost Controls (Layer 5.2)
     # Hard per-document spend cap. The LLMClauseDetector tracks running USD cost

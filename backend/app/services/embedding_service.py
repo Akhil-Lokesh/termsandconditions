@@ -5,6 +5,7 @@ Uses all-MiniLM-L6-v2 model for FREE local embeddings.
 No external API required!
 """
 
+import asyncio
 import logging
 from typing import List, Optional
 import numpy as np
@@ -88,7 +89,11 @@ class EmbeddingService:
             if len(text) > 2000:
                 text = text[:2000]
             
-            embedding = self.model.encode(text, convert_to_numpy=True)
+            # model.encode is sync + CPU-bound; run it off the event loop so a
+            # single embedding call doesn't block all other concurrent requests.
+            embedding = await asyncio.to_thread(
+                self.model.encode, text, convert_to_numpy=True
+            )
             embedding_list = embedding.tolist()
             
             # Pad to 1536 dimensions to match Pinecone index
@@ -124,8 +129,11 @@ class EmbeddingService:
             
             logger.info(f"Generating {len(texts)} embeddings locally...")
             
-            # Generate all at once (sentence-transformers handles batching internally)
-            embeddings = self.model.encode(texts, convert_to_numpy=True, show_progress_bar=False)
+            # Generate all at once (sentence-transformers handles batching
+            # internally); run off the event loop — this is the heaviest CPU call.
+            embeddings = await asyncio.to_thread(
+                self.model.encode, texts, convert_to_numpy=True, show_progress_bar=False
+            )
             
             # Pad each embedding to 1536 dimensions
             padded = [self._pad_embedding(emb.tolist()) for emb in embeddings]

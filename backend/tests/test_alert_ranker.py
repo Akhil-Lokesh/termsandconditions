@@ -37,7 +37,7 @@ class TestAlertRanker:
         """Test initialization with defaults."""
         ranker = AlertRanker()
 
-        assert ranker.MAX_ALERTS == 100
+        assert ranker.MAX_ALERTS == 500
         assert ranker.user_preferences == {}
 
     def test_init_with_preferences(self):
@@ -366,7 +366,7 @@ class TestAlertRanker:
 
     def test_adjust_budget(self, ranker):
         """Test adjusting alert budget dynamically."""
-        assert ranker.MAX_ALERTS == 100
+        assert ranker.MAX_ALERTS == 500
 
         ranker.adjust_budget(max_alerts=15)
 

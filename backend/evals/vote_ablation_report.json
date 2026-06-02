@@ -1,0 +1,19 @@
+{
+  "dataset": "all",
+  "n_clauses_tested": 30,
+  "kappa_no_vote": 0.10377358490566034,
+  "kappa_with_vote": 0.1588785046728972,
+  "kappa_delta": 0.055104919767236846,
+  "critical_no_vote": 0,
+  "critical_with_vote": 0,
+  "transitions": {},
+  "cost_no_vote_usd": 0.13422,
+  "cost_with_vote_usd": 0.13422,
+  "cost_delta_usd": 0.0,
+  "cost_delta_pct": "+0%",
+  "votes_run": 0,
+  "votes_skipped_by_cost": 0,
+  "cost_capped": false,
+  "recommendation": "vote ON if kappa lift > 0.02 (YES)",
+  "timestamp": "2026-05-26T18:36:39.787312+00:00"
+}

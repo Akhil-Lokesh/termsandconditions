@@ -60,6 +60,13 @@ def _gather_kappa_axes(report: Dict[str, Any]) -> Dict[str, float]:
         report["severity_kappa"], (int, float)
     ):
         out["severity_kappa"] = float(report["severity_kappa"])
+    # Quadratic-weighted kappa is the primary severity figure (ordinal, robust
+    # to the base-rate paradox). Gate on it too — unweighted kappa can move on a
+    # pure base-rate shift without any real quality change.
+    if "severity_qwk" in report and isinstance(
+        report["severity_qwk"], (int, float)
+    ):
+        out["severity_qwk"] = float(report["severity_qwk"])
     if "macro_kappa" in report and isinstance(
         report["macro_kappa"], (int, float)
     ):

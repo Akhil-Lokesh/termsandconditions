@@ -339,3 +339,103 @@
     background-position: 200% 0;
   }
 }
+
+/* ───────────────────────── Scroll reveal ─────────────────────────
+   Elements tagged with [data-reveal] start hidden and animate in once
+   their [data-revealed="true"] flag is flipped by the IntersectionObserver
+   in <Reveal>. We use `animation` (not `transition`) with fill-mode
+   `backwards` so the *resting* state stays transform:none — that keeps
+   `.card-interactive:hover` lifts and other hover transitions intact.
+   The whole thing is gated behind prefers-reduced-motion: no-preference,
+   so reduced-motion users get fully visible, static content. */
+@media (prefers-reduced-motion: no-preference) {
+  [data-reveal] {
+    opacity: 0;
+  }
+  [data-reveal]:not([data-revealed='true']) {
+    will-change: opacity, transform, filter;
+  }
+  [data-reveal='rail'] {
+    transform-origin: left center;
+  }
+
+  [data-reveal][data-revealed='true'] {
+    opacity: 1;
+    animation: reveal-up 0.75s cubic-bezier(0.22, 1, 0.36, 1) var(--reveal-delay, 0ms) backwards;
+  }
+  [data-reveal='scale'][data-revealed='true'] {
+    animation-name: reveal-scale;
+  }
+  [data-reveal='left'][data-revealed='true'] {
+    animation-name: reveal-left;
+  }
+  [data-reveal='right'][data-revealed='true'] {
+    animation-name: reveal-right;
+  }
+  [data-reveal='rail'][data-revealed='true'] {
+    animation: reveal-rail 0.9s cubic-bezier(0.22, 1, 0.36, 1) var(--reveal-delay, 0ms) backwards;
+  }
+}
+
+@keyframes reveal-up {
+  from {
+    opacity: 0;
+    transform: translateY(32px);
+    filter: blur(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes reveal-scale {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(22px);
+    filter: blur(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes reveal-left {
+  from {
+    opacity: 0;
+    transform: translateX(-36px);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes reveal-right {
+  from {
+    opacity: 0;
+    transform: translateX(36px);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes reveal-rail {
+  from {
+    opacity: 0;
+    transform: scaleX(0);
+  }
+  to {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}

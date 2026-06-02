@@ -158,7 +158,12 @@ class MetadataExtractor:
             "website",
         ]:
             value = metadata.get(field)
-            if value and value != "null" and value.strip():
+            # The LLM occasionally returns a non-string here (e.g. a numeric
+            # version "2.0" or a list). Calling .strip() on those raised
+            # AttributeError and crashed the whole clean → ALL metadata dropped.
+            if isinstance(value, (int, float)):
+                value = str(value)
+            if isinstance(value, str) and value.strip() and value.strip().lower() != "null":
                 cleaned[field] = value.strip()
             else:
                 cleaned[field] = None

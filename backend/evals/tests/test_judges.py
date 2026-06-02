@@ -32,6 +32,22 @@ from evals.judge.openai_judge import OpenAIJudge  # noqa: E402
 from evals.judge.runner import JudgeRunner, VerdictCache  # noqa: E402
 
 
+def test_judge_prompts_in_lockstep():
+    """openai_judge documents JUDGE_SYSTEM_PROMPT as a verbatim copy of the
+    claude_judge one. Enforce that here (the safeguard the comment refers to):
+    the two prompts must be byte-identical so the cross-family judge never drifts
+    from the primary rubric."""
+    import hashlib
+    from evals.judge import claude_judge, openai_judge
+
+    claude_hash = hashlib.sha256(claude_judge.JUDGE_SYSTEM_PROMPT.encode()).hexdigest()
+    openai_hash = hashlib.sha256(openai_judge.JUDGE_SYSTEM_PROMPT.encode()).hexdigest()
+    assert claude_hash == openai_hash, (
+        "claude_judge and openai_judge JUDGE_SYSTEM_PROMPT have diverged — "
+        "update BOTH in lockstep."
+    )
+
+
 # --------------------------------------------------------------------------- #
 # Anthropic-client stub                                                       #
 # --------------------------------------------------------------------------- #

@@ -10,6 +10,7 @@ Provides methods for:
 - Index statistics
 """
 
+import asyncio
 import logging
 from typing import List, Dict, Any, Optional
 from pinecone import Pinecone, ServerlessSpec
@@ -146,7 +147,10 @@ class PineconeService:
 
             for i in range(0, len(vectors), BATCH_SIZE):
                 batch = vectors[i : i + BATCH_SIZE]
-                self.index.upsert(vectors=batch, namespace=namespace)
+                # pinecone client calls are blocking network I/O — run off-loop.
+                await asyncio.to_thread(
+                    self.index.upsert, vectors=batch, namespace=namespace
+                )
                 total_upserted += len(batch)
 
                 logger.debug(
@@ -207,7 +211,9 @@ class PineconeService:
                 f"filter={filter}"
             )
 
-            results = self.index.query(
+            # Blocking network I/O — run off the event loop.
+            results = await asyncio.to_thread(
+                self.index.query,
                 vector=query_embedding,
                 namespace=namespace,
                 top_k=top_k,
@@ -262,8 +268,9 @@ class PineconeService:
         try:
             logger.info(f"Deleting document {document_id} from namespace '{namespace}'")
 
-            # Delete by metadata filter
-            self.index.delete(
+            # Delete by metadata filter (blocking network I/O — run off-loop).
+            await asyncio.to_thread(
+                self.index.delete,
                 filter={"document_id": document_id},
                 namespace=namespace,
             )

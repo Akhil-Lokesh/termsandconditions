@@ -4,6 +4,7 @@ export interface User {
   email: string;
   full_name: string;
   is_active: boolean;
+  is_superuser?: boolean;  // present in backend UserResponse (signup/login/me)
   created_at: string;
 }
 
@@ -86,6 +87,7 @@ export interface Anomaly {
   consumer_impact?: string;
   recommendation?: string;
   risk_category?: string;
+  risk_title?: string;
 }
 
 // Competitive Benchmark Types
@@ -224,5 +226,6 @@ export interface FeedbackStats {
 export interface FeedbackResponse {
   success: boolean;
   message: string;
-  feedback_stats: FeedbackStats;
+  // Optional/legacy: the active-learning buffer that populated this was removed.
+  feedback_stats?: FeedbackStats | null;
 }

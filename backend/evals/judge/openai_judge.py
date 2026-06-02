@@ -39,8 +39,10 @@ logger = logging.getLogger(__name__)
 # constraint that production code must not import here either; we keep
 # this module dependency-light by design).
 #
-# If you update the rubric, update BOTH files in lockstep. The harness
-# verifies prompt equality at runtime via a hash check.
+# If you update the rubric, update BOTH files in lockstep. Equality is enforced
+# by a unit test — evals/tests/test_judges.py::test_judge_prompts_in_lockstep —
+# which asserts the two JUDGE_SYSTEM_PROMPT strings are byte-identical (there is
+# no runtime check, since this module intentionally does not import claude_judge).
 JUDGE_SYSTEM_PROMPT = """You are a SENIOR LEGAL ANALYST auditing the output of an automated clause-risk classifier.
 
 You will be shown:

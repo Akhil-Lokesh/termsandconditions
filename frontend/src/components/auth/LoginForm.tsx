@@ -23,7 +23,12 @@ export const LoginForm = () => {
       toast.success('Welcome back!');
       navigate('/dashboard');
     } catch (error: unknown) {
-      const message = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Login failed. Please check your credentials.';
+      // The api interceptor reshapes errors to { message, detail, ... } — read
+      // `.message` (already resolves to the backend's "Incorrect email or
+      // password." on a 401), not the non-existent error.response.data.detail.
+      const message =
+        (error as { message?: string })?.message ||
+        'Login failed. Please check your credentials.';
       toast.error(message);
     } finally {
       setIsLoading(false);
@@ -31,19 +36,19 @@ export const LoginForm = () => {
   };
 
   return (
-    <div className="w-full max-w-md px-4 sm:px-0">
-      <div className="card-interactive rounded-xl border border-border/50 overflow-hidden">
+    <div className="w-full px-4 sm:px-0">
+      <div className="card-interactive rounded-xl border border-border/50 overflow-hidden shadow-2xl shadow-black/40">
         {/* Header */}
-        <div className="p-4 lg:p-6 border-b border-border/30 text-center">
-          <h2 className="text-xl lg:text-2xl font-display font-bold text-foreground">Welcome Back</h2>
-          <p className="text-xs lg:text-sm text-muted-foreground mt-1">
+        <div className="px-6 pt-6 pb-4 lg:px-8 lg:pt-7 lg:pb-4 border-b border-border/30 text-center">
+          <h2 className="text-2xl lg:text-3xl font-display font-bold text-foreground">Welcome Back</h2>
+          <p className="text-sm text-muted-foreground mt-1.5">
             Enter your credentials to access your account
           </p>
         </div>
 
         {/* Form */}
-        <div className="p-4 lg:p-6">
-          <form onSubmit={handleSubmit} className="space-y-4 lg:space-y-5">
+        <div className="px-6 pb-6 pt-5 lg:px-8 lg:pb-7 lg:pt-5">
+          <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">
               <Label htmlFor="email" className="text-sm font-medium text-foreground">
                 Email
@@ -58,7 +63,7 @@ export const LoginForm = () => {
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   disabled={isLoading}
-                  className="pl-10 bg-muted/30 border-border/50 focus:border-primary/50 focus:ring-primary/20"
+                  className="pl-10 h-11 bg-muted/30 border-border/50 focus:border-primary/50 focus:ring-primary/20"
                 />
               </div>
             </div>
@@ -77,14 +82,14 @@ export const LoginForm = () => {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   disabled={isLoading}
-                  className="pl-10 bg-muted/30 border-border/50 focus:border-primary/50 focus:ring-primary/20"
+                  className="pl-10 h-11 bg-muted/30 border-border/50 focus:border-primary/50 focus:ring-primary/20"
                 />
               </div>
             </div>
 
             <Button
               type="submit"
-              className="w-full glow-primary bg-primary hover:bg-primary/90 text-primary-foreground"
+              className="w-full h-12 text-base glow-primary bg-primary hover:bg-primary/90 text-primary-foreground"
               disabled={isLoading}
             >
               {isLoading ? (

@@ -99,6 +99,14 @@ async def _run_production_detector(eval_clauses: List[Any]) -> List[dict]:
         sev = f.get("severity")
         if isinstance(sev, str):
             sev = sev.strip().lower() or None
+        # The detector returns NO finding for clauses it judges non-risky. That
+        # is a deliberate "no alert" verdict, not missing data — represent it as
+        # "none" so it aligns with the Gemini judge's "none" tier (both raters
+        # perform the same flag-or-decline task). Without this, a precision-first
+        # checklist detector looks like it "disagrees" with a judge that is
+        # forced to assign a tier to every benign clause.
+        if sev is None:
+            sev = "none"
         cat = f.get("risk_category")
         if isinstance(cat, str):
             cat = cat.strip().lower() or None
@@ -282,6 +290,18 @@ async def run(
     ]
     gemini_labels_obj = await judge.label_batch(judge_input)
     gemini_labels = [lbl.to_dict() for lbl in gemini_labels_obj]
+
+    # A "none" severity means "no consumer-risk alert" — there is no meaningful
+    # risk_category for a non-risk. Null the category on both sides so the
+    # category-agreement metric is computed only where a category is defined
+    # (i.e. a real flagged risk), instead of penalising agreed non-risks for
+    # disagreeing on an irrelevant category label.
+    for pred in claude_preds:
+        if pred.get("severity") == "none":
+            pred["risk_category"] = None
+    for lbl in gemini_labels:
+        if lbl.get("severity") == "none":
+            lbl["risk_category"] = None
 
     # 3. Agreement metrics.
     metrics = compute_agreement_metrics(claude_preds, gemini_labels)

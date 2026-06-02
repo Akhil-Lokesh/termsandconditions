@@ -56,9 +56,6 @@ class Document(Base):
     anomalies = relationship(
         "Anomaly", back_populates="document", cascade="all, delete-orphan"
     )
-    analysis_logs = relationship(
-        "AnalysisLog", back_populates="document", cascade="all, delete-orphan"
-    )
 
     def __repr__(self) -> str:
         return f"<Document(id={self.id}, filename={self.filename}, status={self.processing_status})>"

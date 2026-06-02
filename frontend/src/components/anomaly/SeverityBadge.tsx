@@ -37,10 +37,17 @@ export const SeverityBadge = ({ severity }: SeverityBadgeProps) => {
   const { icon: Icon, label, className, dotClass } = config[severityKey];
 
   return (
-    <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border ${className}`}>
-      <div className={`w-1.5 h-1.5 rounded-full ${dotClass} animate-pulse`} />
-      <Icon className="h-3.5 w-3.5" />
-      <span className="text-xs font-mono font-medium">{label}</span>
+    <div
+      className={`inline-flex items-center gap-1.5 lg:gap-2 px-2.5 lg:px-3 py-1 lg:py-1.5 rounded-full border ${className}`}
+    >
+      <span className="relative flex h-1.5 w-1.5">
+        <span className={`absolute inline-flex h-full w-full rounded-full ${dotClass} opacity-60 animate-ping`} />
+        <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${dotClass}`} />
+      </span>
+      <Icon className="h-3 w-3 lg:h-3.5 lg:w-3.5" />
+      <span className="text-[10px] lg:text-xs font-mono font-medium uppercase tracking-wider whitespace-nowrap">
+        {label}
+      </span>
     </div>
   );
 };

@@ -1,4 +1,6 @@
+import { useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useDocument } from '@/hooks/useDocuments';
 import { useAnomalies } from '@/hooks/useAnomalies';
 import { useAnomalyReport } from '@/hooks/useAnomalyReport';
@@ -27,6 +29,20 @@ export default function DocumentPage() {
   const isAnalyzing = document?.processing_status === 'analyzing_anomalies' ||
                       document?.processing_status === 'processing' ||
                       document?.processing_status === 'embedding_completed';
+
+  const isFailed = document?.processing_status === 'failed' ||
+                   document?.processing_status === 'anomaly_detection_failed';
+
+  // When analysis transitions to "completed", force a fresh fetch of the anomaly
+  // list / report. Otherwise the UI can keep showing the last in-progress poll
+  // (which often read 0 anomalies) and render a misleading "No Risks Found".
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    if (document?.processing_status === 'completed') {
+      queryClient.invalidateQueries({ queryKey: ['anomalies', id] });
+      queryClient.invalidateQueries({ queryKey: ['anomaly-report', id] });
+    }
+  }, [document?.processing_status, id, queryClient]);
 
   if (docLoading) {
     return (
@@ -97,6 +113,21 @@ export default function DocumentPage() {
             <span className="font-medium text-primary">Analyzing in progress...</span>
             <span className="text-muted-foreground ml-2">
               Scanning clauses for risky patterns. This may take a minute.
+            </span>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Failed-analysis banner — surface the failure instead of silently
+          rendering an empty "No Risks Found" result. */}
+      {isFailed && (
+        <Alert variant="destructive" className="bg-destructive/10 border-destructive/30">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription className="text-foreground">
+            <span className="font-medium text-destructive">Analysis didn’t complete.</span>
+            <span className="text-muted-foreground ml-2">
+              We couldn’t finish scanning this document for risks — the results below may be
+              incomplete. Try re-analyzing, or re-upload the file.
             </span>
           </AlertDescription>
         </Alert>

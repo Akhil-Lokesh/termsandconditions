@@ -55,7 +55,7 @@ RPM_PACING_SECONDS = 6.5
 REQUEST_TIMEOUT_SECONDS = 60.0
 
 # Severity vocabulary — must match LLMClauseDetector + EvalClause schema.
-SEVERITIES = ("critical", "high", "medium", "low")
+SEVERITIES = ("critical", "high", "medium", "low", "none")
 # Categories — must match the 11 values in evals/datasets/schema.py.
 RISK_CATEGORIES = (
     "liability", "payment", "privacy", "arbitration", "modification",
@@ -70,8 +70,9 @@ GEMINI_ENDPOINT_TEMPLATE = (
 # --- System & user prompt builders ---------------------------------------- #
 
 SYSTEM_PROMPT = """You are a legal-document risk analyst evaluating clauses from \
-Terms of Service and Privacy Policy documents. For each clause you receive, \
-assign one severity and one risk_category.
+Terms of Service and Privacy Policy documents. Your task mirrors a consumer-risk \
+detector: flag clauses that warrant a consumer-risk ALERT, and decline the rest. \
+For each clause, assign one severity and one risk_category.
 
 Severity rubric:
 - critical: clear material harm to a typical consumer (forced arbitration \
@@ -85,17 +86,26 @@ discretion termination of accounts; sole-discretion content removal; broad \
 license to user-generated content).
 - medium: notable but standard industry practice (limitation of liability \
 without extreme caps; unilateral terms-change via continued use; mandatory \
-venue / forum selection; warranty disclaimers).
-- low: boilerplate / routine (severability; notice provisions; headings; \
-governing-law clauses with reasonable jurisdiction).
+venue / forum selection; warranty disclaimers; disclosed first-party \
+behavioral advertising).
+- low: a minor but real consumer risk worth surfacing (e.g. a governing-law / \
+forum clause that is mildly inconvenient).
+- none: NOT a consumer-risk alert. Purely descriptive, benign, or routine \
+boilerplate that a risk detector would not flag — section headings, contact \
+information, factual statements of how the service works, severability, \
+generic notice provisions, ordinary cookie/analytics descriptions, and \
+clauses that simply DESCRIBE data collection without an unfair term. When in \
+doubt between "low" and "none", ask: would a consumer-protection tool raise an \
+alert on this? If no, use "none".
 
 Categories (pick exactly one): liability, payment, privacy, arbitration, \
-modification, termination, content, data, rights, surveillance, other.
+modification, termination, content, data, rights, surveillance, other. \
+(For "none" severity, pick the closest category or "other".)
 
 Output requirements:
 - Return ONLY a JSON array, one object per clause, in INPUT ORDER.
 - Each object has exactly: clause_id (string), severity (one of \
-critical/high/medium/low), risk_category (one of the 11 values above).
+none/low/medium/high/critical), risk_category (one of the 11 values above).
 - No prose, no markdown fences, no chain-of-thought, no other keys.
 """
 
