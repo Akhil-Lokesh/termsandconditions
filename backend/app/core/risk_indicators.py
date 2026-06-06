@@ -1114,7 +1114,7 @@ class RiskIndicators:
         Returns:
             List of detected indicators with severity and description
         """
-        from .constants import WHITELIST_PATTERNS, SKIP_SINGLE_KEYWORDS, BOILERPLATE_SECTIONS
+        from .constants import WHITELIST_PATTERNS, BOILERPLATE_SECTIONS
 
         detected = []
         text_lower = clause_text.lower()
